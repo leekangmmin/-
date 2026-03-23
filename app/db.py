@@ -30,6 +30,14 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
 
 
 def save_submission(
@@ -131,3 +139,28 @@ def get_submission(submission_id: int) -> dict[str, Any] | None:
         "essay_text": row["essay_text"],
         "result": json.loads(row["result_json"]),
     }
+
+
+def set_setting(key: str, value: str) -> None:
+    init_db()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO app_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+            """,
+            (key, value),
+        )
+
+
+def get_setting(key: str, default: str = "") -> str:
+    init_db()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            (key,),
+        ).fetchone()
+    if row is None:
+        return default
+    return str(row["value"])

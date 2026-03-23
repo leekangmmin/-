@@ -41,6 +41,8 @@
           <button id="checkRiskBtn" class="btn ghost">위험 체크</button>
           <button id="evaluateBtn" class="btn primary">제출하기 (채점)</button>
           <button id="insertTemplateBtn" class="btn ghost">템플릿 넣기</button>
+          <button id="savePromptBtn" class="btn ghost">프롬프트 저장</button>
+          <button id="loadPromptBtn" class="btn ghost">프롬프트 불러오기</button>
           <button id="autoReevalBtn" class="btn ghost" disabled>교정 반영 재채점</button>
           <button id="clearDraftBtn" class="btn ghost">초안 비우기</button>
           <button id="downloadPdfBtn" class="btn ghost" disabled>PDF</button>
@@ -50,6 +52,53 @@
       <div id="riskPanel" class="risk hidden">
         <strong>제출 위험도: <span id="riskLevel">-</span></strong>
         <ul id="riskWarnings" class="list"></ul>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>AI 연결 설정 (ChatGPT / Claude / Gemini)</h2>
+        <button id="saveAiConfigBtn" class="btn primary sm">저장</button>
+      </div>
+      <div class="ai-config-grid">
+        <label class="inline-label">공급자
+          <select id="aiProviderSelect">
+            <option value="openai">ChatGPT (OpenAI)</option>
+            <option value="claude">Claude (Anthropic)</option>
+            <option value="gemini">Gemini (Google)</option>
+          </select>
+        </label>
+        <label class="inline-label">AI 사용
+          <input id="aiEnabledCheckbox" type="checkbox" />
+        </label>
+      </div>
+      <div class="ai-config-grid">
+        <label class="inline-label">OpenAI API Key
+          <input id="openaiApiKeyInput" type="password" placeholder="sk-..." />
+        </label>
+        <label class="inline-label">OpenAI Model
+          <input id="openaiModelInput" type="text" value="gpt-4.1-mini" />
+        </label>
+      </div>
+      <div class="ai-config-grid">
+        <label class="inline-label">Claude API Key
+          <input id="anthropicApiKeyInput" type="password" placeholder="sk-ant-..." />
+        </label>
+        <label class="inline-label">Claude Model
+          <input id="anthropicModelInput" type="text" value="claude-3-5-sonnet-latest" />
+        </label>
+      </div>
+      <div class="ai-config-grid">
+        <label class="inline-label">Gemini API Key
+          <input id="geminiApiKeyInput" type="password" placeholder="AIza..." />
+        </label>
+        <label class="inline-label">Gemini Model
+          <input id="geminiModelInput" type="text" value="gemini-1.5-pro-latest" />
+        </label>
+      </div>
+      <div class="ai-config-actions">
+        <button id="testAiConfigBtn" class="btn ghost">연결 테스트</button>
+        <span id="aiConfigStatus" class="muted small">저장 후 테스트를 실행하세요.</span>
       </div>
     </section>
 
@@ -181,6 +230,10 @@
         <p id="rewriteMinimal" class="serif-text"></p>
         <p class="tblock-label" style="margin-top:14px">적극 수정</p>
         <p id="rewriteAggressive" class="serif-text"></p>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button id="copyMinimalBtn" class="btn ghost sm">최소 수정 복사</button>
+          <button id="copyAggressiveBtn" class="btn ghost sm">적극 수정 복사</button>
+        </div>
       </article>
 
       <article class="card wide">

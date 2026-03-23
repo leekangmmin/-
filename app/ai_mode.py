@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 import httpx
+
+from app.db import get_setting
 
 
 SYSTEM_PROMPT = (
@@ -14,12 +17,163 @@ SYSTEM_PROMPT = (
 )
 
 
-def ai_enabled() -> bool:
-    return bool(os.getenv("OPENAI_API_KEY", "").strip())
+def _read_cfg(key: str, fallback: str = "") -> str:
+    db_val = get_setting(key, "").strip()
+    if db_val:
+        return db_val
+    env_name = key.upper()
+    return os.getenv(env_name, fallback).strip()
 
 
-def ai_model() -> str:
-    return os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+def ai_runtime_config() -> dict[str, Any]:
+    provider = _read_cfg("ai_provider", "openai") or "openai"
+    enabled = (_read_cfg("ai_enabled", "0") == "1")
+
+    openai_key = _read_cfg("openai_api_key", "")
+    claude_key = _read_cfg("anthropic_api_key", "")
+    gemini_key = _read_cfg("gemini_api_key", "")
+
+    openai_model = _read_cfg("openai_model", "gpt-4.1-mini") or "gpt-4.1-mini"
+    claude_model = _read_cfg("anthropic_model", "claude-3-5-sonnet-latest") or "claude-3-5-sonnet-latest"
+    gemini_model = _read_cfg("gemini_model", "gemini-1.5-pro-latest") or "gemini-1.5-pro-latest"
+
+    return {
+        "provider": provider,
+        "enabled": enabled,
+        "openai_api_key": openai_key,
+        "anthropic_api_key": claude_key,
+        "gemini_api_key": gemini_key,
+        "openai_model": openai_model,
+        "anthropic_model": claude_model,
+        "gemini_model": gemini_model,
+    }
+
+
+def ai_enabled(cfg: dict[str, Any] | None = None) -> bool:
+    c = cfg or ai_runtime_config()
+    if not bool(c.get("enabled")):
+        return False
+    provider = str(c.get("provider", "openai"))
+    if provider == "claude":
+        return bool(str(c.get("anthropic_api_key", "")).strip())
+    if provider == "gemini":
+        return bool(str(c.get("gemini_api_key", "")).strip())
+    return bool(str(c.get("openai_api_key", "")).strip())
+
+
+def _extract_json(content: str) -> dict[str, Any] | None:
+    text = content.strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if not m:
+        return None
+    try:
+        parsed = json.loads(m.group(0))
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        return None
+    return None
+
+
+def _openai_enhance(cfg: dict[str, Any], user_prompt: dict[str, Any]) -> dict[str, Any] | None:
+    api_key = str(cfg.get("openai_api_key", "")).strip()
+    if not api_key:
+        return None
+    model = str(cfg.get("openai_model", "gpt-4.1-mini")).strip() or "gpt-4.1-mini"
+    with httpx.Client(timeout=20.0) as client:
+        resp = client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "temperature": 0.3,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
+                ],
+            },
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        content = payload["choices"][0]["message"]["content"]
+    return _extract_json(str(content))
+
+
+def _anthropic_enhance(cfg: dict[str, Any], user_prompt: dict[str, Any]) -> dict[str, Any] | None:
+    api_key = str(cfg.get("anthropic_api_key", "")).strip()
+    if not api_key:
+        return None
+    model = str(cfg.get("anthropic_model", "claude-3-5-sonnet-latest")).strip() or "claude-3-5-sonnet-latest"
+    with httpx.Client(timeout=25.0) as client:
+        resp = client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "temperature": 0.3,
+                "max_tokens": 1400,
+                "system": SYSTEM_PROMPT,
+                "messages": [
+                    {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
+                ],
+            },
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        parts = payload.get("content", [])
+        text = ""
+        for p in parts:
+            if isinstance(p, dict) and p.get("type") == "text":
+                text += str(p.get("text", ""))
+    return _extract_json(text)
+
+
+def _gemini_enhance(cfg: dict[str, Any], user_prompt: dict[str, Any]) -> dict[str, Any] | None:
+    api_key = str(cfg.get("gemini_api_key", "")).strip()
+    if not api_key:
+        return None
+    model = str(cfg.get("gemini_model", "gemini-1.5-pro-latest")).strip() or "gemini-1.5-pro-latest"
+    prompt_text = (
+        SYSTEM_PROMPT
+        + "\n\nReturn JSON object only.\n"
+        + json.dumps(user_prompt, ensure_ascii=False)
+    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    with httpx.Client(timeout=25.0) as client:
+        resp = client.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt_text}]}],
+                "generationConfig": {"temperature": 0.3},
+            },
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        texts: list[str] = []
+        for cand in payload.get("candidates", []):
+            content = cand.get("content", {}) if isinstance(cand, dict) else {}
+            for part in content.get("parts", []) if isinstance(content, dict) else []:
+                if isinstance(part, dict) and "text" in part:
+                    texts.append(str(part.get("text", "")))
+    return _extract_json("\n".join(texts))
 
 
 def ai_enhance(
@@ -28,9 +182,10 @@ def ai_enhance(
     paraphrase_fallback: list[dict[str, str]],
     grammar_drills_fallback: list[dict[str, str]],
     sample_paragraph_fallback: str,
+    cfg: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
+    runtime = cfg or ai_runtime_config()
+    if not ai_enabled(runtime):
         return None
 
     user_prompt = {
@@ -59,30 +214,11 @@ def ai_enhance(
     }
 
     try:
-        with httpx.Client(timeout=12.0) as client:
-            resp = client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": ai_model(),
-                    "temperature": 0.3,
-                    "response_format": {"type": "json_object"},
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
-                    ],
-                },
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            content = payload["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-
-            if not isinstance(parsed, dict):
-                return None
-            return parsed
+        provider = str(runtime.get("provider", "openai"))
+        if provider == "claude":
+            return _anthropic_enhance(runtime, user_prompt)
+        if provider == "gemini":
+            return _gemini_enhance(runtime, user_prompt)
+        return _openai_enhance(runtime, user_prompt)
     except Exception:
         return None

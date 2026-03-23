@@ -215,6 +215,7 @@ class EvaluationResult(BaseModel):
     score_band_1_6: float
     score_profile: ScoreBandProfile
     ai_mode: Literal["local", "ai"]
+    ai_provider: Literal["none", "openai", "claude", "gemini"]
     grammar_cap_applied: bool
     grammar_cap_reason: str
     confidence: Literal["low", "medium", "high"]
@@ -353,3 +354,25 @@ class CompareResponse(BaseModel):
     score_delta: float
     grammar_delta: int
     improvement_areas: list[str]
+
+
+class AIConfigRequest(BaseModel):
+    provider: Literal["openai", "claude", "gemini"]
+    enabled: bool = False
+    openai_api_key: str | None = None
+    openai_model: str | None = None
+    anthropic_api_key: str | None = None
+    anthropic_model: str | None = None
+    gemini_api_key: str | None = None
+    gemini_model: str | None = None
+
+
+class AIConfigResponse(BaseModel):
+    provider: Literal["openai", "claude", "gemini"]
+    enabled: bool
+    openai_model: str
+    anthropic_model: str
+    gemini_model: str
+    has_openai_key: bool
+    has_anthropic_key: bool
+    has_gemini_key: bool

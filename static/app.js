@@ -12,6 +12,8 @@ const draftStatusEl       = document.getElementById("draftStatus");
 const checkRiskBtn        = document.getElementById("checkRiskBtn");
 const evaluateBtn         = document.getElementById("evaluateBtn");
 const insertTemplateBtn   = document.getElementById("insertTemplateBtn");
+const savePromptBtn       = document.getElementById("savePromptBtn");
+const loadPromptBtn       = document.getElementById("loadPromptBtn");
 const autoReevalBtn       = document.getElementById("autoReevalBtn");
 const clearDraftBtn       = document.getElementById("clearDraftBtn");
 const downloadPdfBtn      = document.getElementById("downloadPdfBtn");
@@ -50,6 +52,8 @@ const claimMapEl          = document.getElementById("claimMap");
 const weaknessDictionaryEl= document.getElementById("weaknessDictionary");
 const rewriteMinimalEl    = document.getElementById("rewriteMinimal");
 const rewriteAggressiveEl = document.getElementById("rewriteAggressive");
+const copyMinimalBtn      = document.getElementById("copyMinimalBtn");
+const copyAggressiveBtn   = document.getElementById("copyAggressiveBtn");
 const paraphraseSuggestionsEl = document.getElementById("paraphraseSuggestions");
 const checklistTotalEl    = document.getElementById("checklistTotal");
 const checklistItemsEl    = document.getElementById("checklistItems");
@@ -87,6 +91,18 @@ const trendGrammarBtn     = document.getElementById("trendGrammarBtn");
 const trendCaptionEl      = document.getElementById("trendCaption");
 const trendLineEl         = document.getElementById("trendLine");
 
+const aiProviderSelect    = document.getElementById("aiProviderSelect");
+const aiEnabledCheckbox   = document.getElementById("aiEnabledCheckbox");
+const openaiApiKeyInput   = document.getElementById("openaiApiKeyInput");
+const openaiModelInput    = document.getElementById("openaiModelInput");
+const anthropicApiKeyInput= document.getElementById("anthropicApiKeyInput");
+const anthropicModelInput = document.getElementById("anthropicModelInput");
+const geminiApiKeyInput   = document.getElementById("geminiApiKeyInput");
+const geminiModelInput    = document.getElementById("geminiModelInput");
+const saveAiConfigBtn     = document.getElementById("saveAiConfigBtn");
+const testAiConfigBtn     = document.getElementById("testAiConfigBtn");
+const aiConfigStatus      = document.getElementById("aiConfigStatus");
+
 let timerId = null;
 let pendingAutoSubmitId = null;
 let pendingAutoSubmit = false;
@@ -96,6 +112,7 @@ let lastResult = null;
 
 /* ── Draft helpers ───────────────────────────────────────────────────── */
 const DRAFT_KEY = "toefl_draft_text";
+const PROMPT_LIBRARY_KEY = "toefl_prompt_library";
 
 function sentenceCount(text) {
   const m = text.match(/[^.!?]+[.!?]?/g) || [];
@@ -123,6 +140,111 @@ function loadDraft() {
   if (!draft) return;
   essayTextEl.value = draft;
   setText(draftStatusEl, "자동저장 불러옴");
+}
+
+function savePromptLibrary() {
+  const text = essayTextEl.value.trim();
+  if (!text) {
+    statusText.textContent = "저장할 프롬프트/답안 텍스트가 없습니다.";
+    return;
+  }
+  const current = JSON.parse(localStorage.getItem(PROMPT_LIBRARY_KEY) || "[]");
+  const item = { text: text, createdAt: new Date().toISOString() };
+  const next = [item].concat(current).slice(0, 20);
+  localStorage.setItem(PROMPT_LIBRARY_KEY, JSON.stringify(next));
+  statusText.textContent = "프롬프트 라이브러리에 저장했습니다.";
+}
+
+function loadPromptLibrary() {
+  const items = JSON.parse(localStorage.getItem(PROMPT_LIBRARY_KEY) || "[]");
+  if (!items.length) {
+    statusText.textContent = "저장된 프롬프트가 없습니다.";
+    return;
+  }
+  const pick = items[0];
+  essayTextEl.value = String(pick.text || "");
+  updateDetectBadge(essayTextEl.value);
+  updateLiveStats();
+  saveDraft();
+  statusText.textContent = "최근 저장 프롬프트를 불러왔습니다.";
+}
+
+async function copyTextSafe(text, label) {
+  if (!text || !text.trim()) {
+    statusText.textContent = label + " 내용이 비어 있습니다.";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    statusText.textContent = label + "을(를) 클립보드에 복사했습니다.";
+  } catch(_) {
+    statusText.textContent = "클립보드 복사에 실패했습니다.";
+  }
+}
+
+function providerLabel(provider) {
+  if (provider === "claude") return "Claude";
+  if (provider === "gemini") return "Gemini";
+  return "ChatGPT";
+}
+
+async function loadAiConfig() {
+  try {
+    const res = await fetch("/api/ai/config");
+    if (!res.ok) throw new Error();
+    const cfg = await res.json();
+    aiProviderSelect.value = cfg.provider;
+    aiEnabledCheckbox.checked = Boolean(cfg.enabled);
+    openaiModelInput.value = cfg.openai_model || "gpt-4.1-mini";
+    anthropicModelInput.value = cfg.anthropic_model || "claude-3-5-sonnet-latest";
+    geminiModelInput.value = cfg.gemini_model || "gemini-1.5-pro-latest";
+    openaiApiKeyInput.placeholder = cfg.has_openai_key ? "저장됨 (재입력 시 갱신)" : "sk-...";
+    anthropicApiKeyInput.placeholder = cfg.has_anthropic_key ? "저장됨 (재입력 시 갱신)" : "sk-ant-...";
+    geminiApiKeyInput.placeholder = cfg.has_gemini_key ? "저장됨 (재입력 시 갱신)" : "AIza...";
+    aiConfigStatus.textContent = "현재 설정을 불러왔습니다.";
+  } catch (_) {
+    aiConfigStatus.textContent = "AI 설정을 불러오지 못했습니다.";
+  }
+}
+
+async function saveAiConfig() {
+  const payload = {
+    provider: aiProviderSelect.value,
+    enabled: Boolean(aiEnabledCheckbox.checked),
+    openai_api_key: openaiApiKeyInput.value.trim() || null,
+    openai_model: openaiModelInput.value.trim() || null,
+    anthropic_api_key: anthropicApiKeyInput.value.trim() || null,
+    anthropic_model: anthropicModelInput.value.trim() || null,
+    gemini_api_key: geminiApiKeyInput.value.trim() || null,
+    gemini_model: geminiModelInput.value.trim() || null,
+  };
+  try {
+    const res = await fetch("/api/ai/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error();
+    openaiApiKeyInput.value = "";
+    anthropicApiKeyInput.value = "";
+    geminiApiKeyInput.value = "";
+    await loadAiConfig();
+    aiConfigStatus.textContent = "AI 설정이 저장되었습니다.";
+  } catch (_) {
+    aiConfigStatus.textContent = "AI 설정 저장에 실패했습니다.";
+  }
+}
+
+async function testAiConfig() {
+  aiConfigStatus.textContent = "연결 테스트 중...";
+  try {
+    const res = await fetch("/api/ai/test", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error();
+    aiConfigStatus.textContent = (data.ok ? "성공: " : "실패: ") + (data.message || "테스트 완료");
+  } catch (_) {
+    aiConfigStatus.textContent = "연결 테스트 요청에 실패했습니다.";
+  }
 }
 
 function insertTemplate() {
@@ -731,7 +853,7 @@ async function evaluateEssay(isExamMode) {
     setText(score30El, result.estimated_score_30);
     setText(writingRangeEl, result.score_profile.writing);
     setText(totalRangeEl, result.score_profile.total);
-    setText(aiModeBadgeEl, result.ai_mode === "ai" ? "AI 고급" : "로컬");
+    setText(aiModeBadgeEl, result.ai_mode === "ai" ? (providerLabel(result.ai_provider) + " 연동") : "로컬");
     if (result.grammar_cap_applied) {
       setText(grammarCapBadgeEl, "적용됨");
       grammarCapBadgeEl.classList.add("warn");
@@ -815,6 +937,8 @@ checkRiskBtn.addEventListener("click", checkRisk);
 evaluateBtn.addEventListener("click", function() { evaluateEssay(false); });
 startTimerBtn.addEventListener("click", startTimer);
 insertTemplateBtn.addEventListener("click", insertTemplate);
+savePromptBtn.addEventListener("click", savePromptLibrary);
+loadPromptBtn.addEventListener("click", loadPromptLibrary);
 clearDraftBtn.addEventListener("click", function() {
   essayTextEl.value = "";
   localStorage.removeItem(DRAFT_KEY);
@@ -853,9 +977,14 @@ downloadPdfBtn.addEventListener("click", function() {
 });
 document.getElementById("refreshHistory").addEventListener("click", fetchHistory);
 document.getElementById("refreshDashboard").addEventListener("click", fetchDashboard);
+saveAiConfigBtn.addEventListener("click", saveAiConfig);
+testAiConfigBtn.addEventListener("click", testAiConfig);
+copyMinimalBtn.addEventListener("click", function() { copyTextSafe(rewriteMinimalEl.textContent || "", "최소 수정문"); });
+copyAggressiveBtn.addEventListener("click", function() { copyTextSafe(rewriteAggressiveEl.textContent || "", "적극 수정문"); });
 
 fetchHistory();
 fetchDashboard();
+loadAiConfig();
 loadDraft();
 updateDetectBadge(essayTextEl.value);
 updateLiveStats();

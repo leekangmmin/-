@@ -92,8 +92,11 @@ from app.models import (
     DailySubmissionCount,
     CompareResponse,
     CompareScoreInfo,
+    AIConfigRequest,
+    AIConfigResponse,
 )
-from app.ai_mode import ai_enabled, ai_enhance
+from app.ai_mode import ai_enabled, ai_enhance, ai_runtime_config
+from app.db import get_setting, set_setting
 from app.scorer import analyze_essay, grammar_cap_status, score_essay
 from app.vocab_analysis import analyze_vocabulary
 
@@ -121,6 +124,26 @@ def _to_band_1_6(score_0_5: float) -> float:
 
 def _band_profile(score_band_1_6: float) -> dict[str, str]:
     return TOEFL_BAND_TABLE.get(score_band_1_6, TOEFL_BAND_TABLE[1.0])
+
+
+def _ai_public_config() -> AIConfigResponse:
+    runtime = ai_runtime_config()
+    provider_raw = str(runtime.get("provider", "openai")).strip().lower() or "openai"
+    provider = cast(Literal["openai", "claude", "gemini"], provider_raw if provider_raw in {"openai", "claude", "gemini"} else "openai")
+    enabled = bool(runtime.get("enabled"))
+    openai_model = str(runtime.get("openai_model", "gpt-4.1-mini"))
+    anthropic_model = str(runtime.get("anthropic_model", "claude-3-5-sonnet-latest"))
+    gemini_model = str(runtime.get("gemini_model", "gemini-1.5-pro-latest"))
+    return AIConfigResponse(
+        provider=provider,
+        enabled=enabled,
+        openai_model=openai_model,
+        anthropic_model=anthropic_model,
+        gemini_model=gemini_model,
+        has_openai_key=bool(str(runtime.get("openai_api_key", "")).strip()),
+        has_anthropic_key=bool(str(runtime.get("anthropic_api_key", "")).strip()),
+        has_gemini_key=bool(str(runtime.get("gemini_api_key", "")).strip()),
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -150,6 +173,53 @@ def index() -> FileResponse:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "time": datetime.now(UTC).isoformat()}
+
+
+@app.get("/api/ai/config", response_model=AIConfigResponse)
+def get_ai_config() -> AIConfigResponse:
+    return _ai_public_config()
+
+
+@app.post("/api/ai/config", response_model=AIConfigResponse)
+def save_ai_config(payload: AIConfigRequest) -> AIConfigResponse:
+    set_setting("ai_provider", payload.provider)
+    set_setting("ai_enabled", "1" if payload.enabled else "0")
+
+    if payload.openai_api_key is not None:
+        set_setting("openai_api_key", payload.openai_api_key.strip())
+    if payload.anthropic_api_key is not None:
+        set_setting("anthropic_api_key", payload.anthropic_api_key.strip())
+    if payload.gemini_api_key is not None:
+        set_setting("gemini_api_key", payload.gemini_api_key.strip())
+
+    if payload.openai_model is not None:
+        set_setting("openai_model", payload.openai_model.strip())
+    if payload.anthropic_model is not None:
+        set_setting("anthropic_model", payload.anthropic_model.strip())
+    if payload.gemini_model is not None:
+        set_setting("gemini_model", payload.gemini_model.strip())
+
+    return _ai_public_config()
+
+
+@app.post("/api/ai/test")
+def test_ai_connection() -> dict[str, str | bool]:
+    cfg = ai_runtime_config()
+    if not ai_enabled(cfg):
+        return {"ok": False, "message": "AI 연결이 비활성화되어 있거나 API 키가 없습니다."}
+
+    sample = "Students is often tired and they needs clearer feedback to improve writing quality."
+    result = ai_enhance(
+        sample,
+        "academic_discussion",
+        paraphrase_fallback=[],
+        grammar_drills_fallback=[],
+        sample_paragraph_fallback="",
+        cfg=cfg,
+    )
+    if result:
+        return {"ok": True, "message": f"{cfg.get('provider', 'openai')} 연결 테스트 성공"}
+    return {"ok": False, "message": f"{cfg.get('provider', 'openai')} 응답을 확인하지 못했습니다."}
 
 
 @app.post("/api/evaluate", response_model=EvaluateResponse)
@@ -233,17 +303,21 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
     score_profile_obj = ScoreBandProfile(**score_profile)
     cap = grammar_cap_status(payload.essay_text)
 
+    runtime_ai = ai_runtime_config()
     ai_mode = "local"
-    if ai_enabled():
+    ai_provider = "none"
+    if ai_enabled(runtime_ai):
         ai_payload = ai_enhance(
             payload.essay_text,
             prompt_type,
             paraphrase_data,
             drills_data,
             feedback["upgraded_sample_paragraph"],
+            cfg=runtime_ai,
         )
         if ai_payload:
             ai_mode = "ai"
+            ai_provider = cast(Literal["none", "openai", "claude", "gemini"], str(runtime_ai.get("provider", "openai")))
             paraphrase_data = ai_payload.get("paraphrase_recommendations", paraphrase_data) or paraphrase_data
             drills_data = ai_payload.get("grammar_drills", drills_data) or drills_data
             drills_obj = [GrammarDrill(**item) for item in drills_data]
@@ -257,6 +331,7 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         score_band_1_6=score_band_1_6,
         score_profile=score_profile_obj,
         ai_mode=ai_mode,
+        ai_provider=ai_provider,
         grammar_cap_applied=bool(cap["applied"]),
         grammar_cap_reason=str(cap["reason"]),
         confidence=feedback["confidence"],
@@ -346,6 +421,7 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         "score_band_1_6": result.score_band_1_6,
         "score_profile": result.score_profile.model_dump(),
         "ai_mode": result.ai_mode,
+        "ai_provider": result.ai_provider,
         "grammar_cap_applied": result.grammar_cap_applied,
         "grammar_cap_reason": result.grammar_cap_reason,
         "confidence": result.confidence,
