@@ -60,7 +60,44 @@ jobs:
 
       - name: Build Setup.exe
         shell: powershell
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\windows\build_installer.ps1
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r requirements.txt pyinstaller
+
+          if (Test-Path dist_windows) {
+            Remove-Item -Recurse -Force dist_windows
+          }
+
+          .\.venv\Scripts\pyinstaller.exe `
+            --noconfirm `
+            --clean `
+            --windowed `
+            --onefile `
+            --hidden-import webview `
+            --name "TOEFLScorer" `
+            --distpath "dist_windows" `
+            --paths "." `
+            --add-data "app;app" `
+            --add-data "static;static" `
+            windows\app_launcher.py
+
+          $isccCandidates = @(
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $null
+          foreach ($p in $isccCandidates) {
+            if (Test-Path $p) {
+              $iscc = $p
+              break
+            }
+          }
+          if (-not $iscc) {
+            throw "Inno Setup 6 (ISCC.exe) not found"
+          }
+
+          & $iscc "windows\installer\TOEFLScorer.iss"
 
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
