@@ -466,6 +466,70 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.cell(0, 8, safe(text), new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", size=11)
 
+    def draw_cover_header(submission_id: int, created_at: str, score_text: str) -> None:
+        left = pdf.l_margin
+        width = pdf.w - pdf.l_margin - pdf.r_margin
+
+        # Header band
+        y = pdf.get_y()
+        pdf.set_fill_color(18, 86, 136)
+        pdf.rect(left, y, width, 18, "F")
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_xy(left + 4, y + 4.2)
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.cell(0, 6, "TOEFL Writing Coaching Report")
+
+        pdf.set_font("Helvetica", size=10)
+        pdf.set_xy(left + 4, y + 11.2)
+        pdf.cell(0, 5, safe(f"Submission #{submission_id}  |  {created_at}"))
+
+        # Score spotlight card
+        card_y = y + 22
+        card_h = 18
+        pdf.set_fill_color(234, 245, 253)
+        pdf.set_draw_color(18, 86, 136)
+        pdf.rect(left, card_y, width, card_h, "DF")
+        pdf.set_text_color(18, 86, 136)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_xy(left + 4, card_y + 4)
+        pdf.cell(0, 5, "TOEFL SCORE (MAX 6.0)")
+        pdf.set_font("Helvetica", "B", 22)
+        pdf.set_xy(left + 4, card_y + 8.2)
+        pdf.cell(0, 8, score_text)
+
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_y(card_y + card_h + 5)
+
+    def draw_cover_kpis(confidence: str, eta_attempts: str, eta_pace: str) -> None:
+        left = pdf.l_margin
+        total_w = pdf.w - pdf.l_margin - pdf.r_margin
+        gap = 3.0
+        box_w = (total_w - gap * 2) / 3.0
+        y = pdf.get_y()
+
+        kpis = [
+            ("CONFIDENCE", confidence),
+            ("TARGET ETA", eta_attempts),
+            ("PACE", eta_pace),
+        ]
+
+        for idx, (label, value) in enumerate(kpis):
+            x = left + idx * (box_w + gap)
+            pdf.set_fill_color(246, 248, 251)
+            pdf.set_draw_color(208, 216, 226)
+            pdf.rect(x, y, box_w, 14, "DF")
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(86, 101, 115)
+            pdf.set_xy(x + 2.5, y + 2.2)
+            pdf.cell(box_w - 5, 3.6, label)
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.set_text_color(32, 42, 52)
+            pdf.set_xy(x + 2.5, y + 6.6)
+            pdf.cell(box_w - 5, 5.2, safe(value))
+
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_y(y + 16.5)
+
     def draw_dimension_chart(dimensions: list[dict]) -> None:
         if not dimensions:
             return
@@ -695,27 +759,59 @@ def download_report(submission_id: int) -> FileResponse:
     weekly_plan = result.get("weekly_plan", [])
 
     # Cover page (executive summary)
-    pdf.set_font("Helvetica", "B", 20)
-    pdf.cell(0, 14, "TOEFL Writing Coaching Report", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", size=11)
-    pdf.cell(0, 8, f"Submission #{submission_id} | {record['created_at']}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 7, f"TOEFL SCORE (MAX 6.0): {result.get('score_band_1_6', 'n/a')}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 7, f"Target ETA: {target_eta.get('estimated_attempts', 'n/a')} attempts ({target_eta.get('pace_label', 'n/a')})", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 7, safe(str(target_eta.get("message", ""))), new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 9, "", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Top Priority Actions", new_x="LMARGIN", new_y="NEXT")
+    score_text = str(result.get("score_band_1_6", "n/a"))
+    draw_cover_header(submission_id, str(record["created_at"]), score_text)
+    draw_cover_kpis(
+        str(result.get("confidence", "n/a")),
+        f"{target_eta.get('estimated_attempts', 'n/a')} attempts",
+        str(target_eta.get("pace_label", "n/a")),
+    )
+
+    if target_eta.get("message"):
+        pdf.set_fill_color(253, 248, 232)
+        pdf.set_draw_color(234, 198, 113)
+        info_y = pdf.get_y()
+        info_h = 10
+        pdf.rect(pdf.l_margin, info_y, pdf.w - pdf.l_margin - pdf.r_margin, info_h, "DF")
+        pdf.set_xy(pdf.l_margin + 3, info_y + 2.4)
+        pdf.set_font("Helvetica", size=10)
+        pdf.cell(0, 5, safe(str(target_eta.get("message", ""))))
+        pdf.set_y(info_y + info_h + 4)
+
+    pdf.set_fill_color(239, 244, 250)
+    pdf.set_draw_color(205, 214, 226)
+    sec_y = pdf.get_y()
+    sec_h = 8
+    pdf.rect(pdf.l_margin, sec_y, pdf.w - pdf.l_margin - pdf.r_margin, sec_h, "DF")
+    pdf.set_xy(pdf.l_margin + 3, sec_y + 2)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 4, "TOP PRIORITY ACTIONS")
+    pdf.set_y(sec_y + sec_h + 3)
+
     pdf.set_font("Helvetica", size=11)
     for item in top_priority_actions[:3]:
-        pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(
-            pdf.w - pdf.l_margin - pdf.r_margin,
-            6,
-            safe(f"- {item.get('title', '')} [{item.get('impact', '')}, {item.get('confidence', 'medium')}]"),
-        )
-    pdf.cell(0, 8, "", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Sentence Variety Summary", new_x="LMARGIN", new_y="NEXT")
+        block_y = pdf.get_y()
+        block_h = 12
+        pdf.set_fill_color(250, 252, 255)
+        pdf.set_draw_color(220, 228, 238)
+        pdf.rect(pdf.l_margin, block_y, pdf.w - pdf.l_margin - pdf.r_margin, block_h, "DF")
+        pdf.set_xy(pdf.l_margin + 3, block_y + 2)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 4, safe(str(item.get("title", ""))))
+        pdf.set_xy(pdf.l_margin + 3, block_y + 6.2)
+        pdf.set_font("Helvetica", size=9)
+        pdf.cell(0, 4, safe(f"Impact {item.get('impact', '')}  |  Confidence {item.get('confidence', 'medium')}"))
+        pdf.set_y(block_y + block_h + 2)
+
+    pdf.set_fill_color(239, 244, 250)
+    pdf.set_draw_color(205, 214, 226)
+    sec2_y = pdf.get_y()
+    pdf.rect(pdf.l_margin, sec2_y, pdf.w - pdf.l_margin - pdf.r_margin, sec_h, "DF")
+    pdf.set_xy(pdf.l_margin + 3, sec2_y + 2)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 4, "SENTENCE VARIETY SUMMARY")
+    pdf.set_y(sec2_y + sec_h + 3)
+
     pdf.set_font("Helvetica", size=11)
     pdf.cell(0, 7, safe(f"Short: {sentence_variety.get('short_ratio', 0)} | Medium: {sentence_variety.get('medium_ratio', 0)} | Long: {sentence_variety.get('long_ratio', 0)}"), new_x="LMARGIN", new_y="NEXT")
     pdf.multi_cell(0, 6, safe(str(sentence_variety.get("recommendation", ""))))
