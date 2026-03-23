@@ -913,7 +913,8 @@ async function evaluateEssay(isExamMode) {
 
     setText(rewriteMinimalEl, result.target_rewrite.minimal);
     setText(rewriteAggressiveEl, result.target_rewrite.aggressive);
-    setText(sampleOverlapEl, result.sample_comparison.overlap_score.toFixed(1));
+    const overlapBand = Math.max(1, Math.min(6, Number(result.sample_comparison.overlap_score || 0) + 1));
+    setText(sampleOverlapEl, overlapBand.toFixed(1));
     setText(sampleMatchedEl, result.sample_comparison.matched_points.join(", ") || "없음");
     setText(sampleMissingEl, result.sample_comparison.missing_points.join(", ") || "없음");
     setText(sampleParagraphEl, result.upgraded_sample_paragraph);

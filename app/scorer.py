@@ -243,7 +243,7 @@ def grammar_cap_status(essay_text: str) -> dict[str, float | bool | str]:
         return {
             "applied": True,
             "ceiling_0_5": 2.5,
-            "reason": "반복적인 문법 오류가 감지되어 5.0+/6.0 도달이 어렵습니다.",
+            "reason": "반복적인 문법 오류가 감지되어 6.0 기준 상위권 도달이 어렵습니다.",
         }
     return {
         "applied": False,
