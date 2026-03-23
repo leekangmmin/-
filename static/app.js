@@ -166,6 +166,7 @@ function loadPromptLibrary() {
   updateDetectBadge(essayTextEl.value);
   updateLiveStats();
   saveDraft();
+  essayTextEl.focus();
   statusText.textContent = "최근 저장 프롬프트를 불러왔습니다.";
 }
 
@@ -271,6 +272,7 @@ function insertTemplate() {
   updateDetectBadge(essayTextEl.value);
   updateLiveStats();
   saveDraft();
+  essayTextEl.focus();
 }
 
 /* ── Client-side type detection ─────────────────────────────────────── */
@@ -304,6 +306,13 @@ essayTextEl.addEventListener("input", function() {
   updateDetectBadge(essayTextEl.value);
   updateLiveStats();
   saveDraft();
+});
+
+essayTextEl.addEventListener("keydown", function(ev) {
+  if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") {
+    ev.preventDefault();
+    evaluateEssay(false);
+  }
 });
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
@@ -946,6 +955,7 @@ clearDraftBtn.addEventListener("click", function() {
   setText(draftStatusEl, "초안 비움");
   updateDetectBadge(essayTextEl.value);
   updateLiveStats();
+  essayTextEl.focus();
 });
 autoReevalBtn.addEventListener("click", function() {
   if (!lastResult || !lastResult.auto_rewrite_essay) {
@@ -956,6 +966,7 @@ autoReevalBtn.addEventListener("click", function() {
   updateDetectBadge(essayTextEl.value);
   updateLiveStats();
   saveDraft();
+  essayTextEl.focus();
   statusText.textContent = "교정 반영본으로 재채점합니다...";
   evaluateEssay(false);
 });
@@ -989,3 +1000,7 @@ loadAiConfig();
 loadDraft();
 updateDetectBadge(essayTextEl.value);
 updateLiveStats();
+window.addEventListener("load", function() {
+  essayTextEl.focus();
+  essayTextEl.setSelectionRange(essayTextEl.value.length, essayTextEl.value.length);
+});

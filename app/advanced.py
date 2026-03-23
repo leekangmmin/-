@@ -96,6 +96,52 @@ def _keywords(text: str, top_n: int = 8) -> list[str]:
     return [w for w, _ in counts.most_common(top_n)]
 
 
+def _match_case(source: str, replacement: str) -> str:
+    if not source:
+        return replacement
+    if source.isupper():
+        return replacement.upper()
+    if source[0].isupper():
+        return replacement.capitalize()
+    return replacement
+
+
+def _to_third_person_singular(verb: str) -> str:
+    lowered = verb.lower()
+    irregular = {
+        "have": "has",
+        "do": "does",
+        "go": "goes",
+    }
+    if lowered in irregular:
+        return _match_case(verb, irregular[lowered])
+    if re.search(r"[^aeiou]y$", lowered):
+        return _match_case(verb, lowered[:-1] + "ies")
+    if lowered.endswith(("s", "sh", "ch", "x", "z", "o")):
+        return _match_case(verb, lowered + "es")
+    return _match_case(verb, lowered + "s")
+
+
+def _to_base_form(verb: str) -> str:
+    lowered = verb.lower()
+    irregular = {
+        "has": "have",
+        "does": "do",
+        "goes": "go",
+        "is": "are",
+        "was": "were",
+    }
+    if lowered in irregular:
+        return _match_case(verb, irregular[lowered])
+    if lowered.endswith("ies") and len(lowered) > 3:
+        return _match_case(verb, lowered[:-3] + "y")
+    if lowered.endswith("es") and lowered[:-2].endswith(("s", "sh", "ch", "x", "z", "o")):
+        return _match_case(verb, lowered[:-2])
+    if lowered.endswith("s") and not lowered.endswith("ss"):
+        return _match_case(verb, lowered[:-1])
+    return verb
+
+
 def evaluate_prompt_fit(prompt_text: str, essay_text: str) -> dict:
     pkeys = _keywords(prompt_text, top_n=10)
     essay_words = set(_tokens(essay_text))
@@ -168,23 +214,29 @@ def grammar_error_stats(essay_text: str) -> dict:
     article += len(re.findall(r"\b(an)\s+[^aeiou\W]\w+", lowered))
     article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence|homework|luggage)\b", lowered))
     article += len(re.findall(r"\bmany\s+information\b|\bfewer\s+peoples\b", lowered))
+    article += len(re.findall(r"\bfrom\s+internet\b", lowered))
 
-    preposition = len(re.findall(r"\bdiscuss about\b|\bmention about\b", lowered))
+    preposition = len(re.findall(r"\bdiscuss(?:es)? about\b|\bmentions? about\b", lowered))
     preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered))
     tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
     tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
     tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
     subject_verb = len(re.findall(r"\b(people|students|they)\s+is\b", lowered))
-    subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do)\b", lowered))
+    subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered))
     subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
     subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
     subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
     subject_verb += len(re.findall(r"\b(teacher|student|child)\s+have\b", lowered))
+    subject_verb += len(re.findall(r"\b(i|we|they|people|students)\s+(has|does|needs|makes|suggests|shows|gives|takes|helps)\b", lowered))
+    subject_verb += len(re.findall(r"\b(it|this|that)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered))
+    subject_verb += len(re.findall(r"\b(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered))
+    subject_verb += len(re.findall(r"\b(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered))
     punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
     punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
     punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
     style = len(re.findall(r"\b(could|should|would)\s+of\b", lowered))
     style += len(re.findall(r"\bmore\s+better\b|\bmore\s+worse\b", lowered))
+    style += len(re.findall(r"\bi\s+am\s+agree\b|\bi'm\s+agree\b", lowered))
 
     total = run_on + article + preposition + tense + subject_verb + punctuation + style
     return {
@@ -249,325 +301,261 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
         if len(corrections) >= limit:
             break
 
-        lowered = sentence.lower()
+        original_sentence = sentence
+        working_sentence = sentence
 
+        def current_lowered() -> str:
+            return working_sentence.lower()
+
+        def apply_fix(
+            error_type: str,
+            focus_text: str,
+            corrected: str,
+            explanation: str,
+            severity: Literal["low", "medium", "high"],
+        ) -> None:
+            nonlocal working_sentence
+            if working_sentence == corrected:
+                return
+            push(
+                original_sentence,
+                sentence_start,
+                error_type,
+                focus_text,
+                corrected,
+                explanation,
+                severity,
+            )
+            working_sentence = corrected
+
+        lowered = current_lowered()
         m_subj = re.search(r"\b(people|students|they)\s+is\b", lowered)
         if m_subj:
-            fixed = re.sub(r"\bis\b", "are", sentence, count=1, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "subject_verb",
-                m_subj.group(0),
-                fixed,
-                "복수 주어(people/students/they)에는 보통 are를 사용합니다.",
-                "high",
-            )
+            fixed = re.sub(r"\bis\b", "are", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("subject_verb", m_subj.group(0), fixed, "복수 주어(people/students/they)에는 보통 are를 사용합니다.", "high")
 
-        m_3p = re.search(r"\b(he|she|it)\s+(go|have|do)\b", lowered)
+        lowered = current_lowered()
+        m_plural_aux = re.search(r"\b(i|we|they|people|students)\s+(has|does|needs|makes|suggests|shows|gives|takes|helps)\b", lowered)
+        if m_plural_aux:
+            fixed = re.sub(
+                r"\b(i|we|they|people|students)\s+(has|does|needs|makes|suggests|shows|gives|takes|helps)\b",
+                lambda match: f"{match.group(1)} {_to_base_form(match.group(2))}",
+                working_sentence,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            apply_fix("subject_verb", m_plural_aux.group(0), fixed, "복수 주어나 I 뒤에는 단수형 동사 대신 원형/복수형 동사가 와야 합니다.", "high")
+
+        lowered = current_lowered()
+        m_3p = re.search(r"\b(he|she|it)\s+(go|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered)
         if m_3p:
-            fixed = re.sub(r"\b(he|she|it)\s+go\b", r"\1 goes", sentence, flags=re.IGNORECASE)
-            fixed = re.sub(r"\b(he|she|it)\s+have\b", r"\1 has", fixed, flags=re.IGNORECASE)
-            fixed = re.sub(r"\b(he|she|it)\s+do\b", r"\1 does", fixed, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "subject_verb",
-                m_3p.group(0),
-                fixed,
-                "3인칭 단수 주어(he/she/it)에는 동사에 -s 형태가 필요합니다.",
-                "high",
+            fixed = re.sub(
+                r"\b(he|she|it)\s+(go|have|do|need|make|suggest|show|mean|help|give|take|mention)\b",
+                lambda match: f"{match.group(1)} {_to_third_person_singular(match.group(2))}",
+                working_sentence,
+                count=1,
+                flags=re.IGNORECASE,
             )
+            apply_fix("subject_verb", m_3p.group(0), fixed, "3인칭 단수 주어(he/she/it)에는 동사에 -s 형태가 필요합니다.", "high")
 
-        m_num = re.search(r"\b(many|several|few)\s+student\b", lowered)
+        lowered = current_lowered()
+        m_neutral_subject = re.search(r"\b(it|this|that)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered)
+        if m_neutral_subject:
+            fixed = re.sub(
+                r"\b(it|this|that)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention)\b",
+                lambda match: f"{match.group(1)} {_to_third_person_singular(match.group(2)) if match.group(2).lower() not in {'are', 'were'} else ('is' if match.group(2).lower() == 'are' else 'was')}",
+                working_sentence,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            apply_fix("subject_verb", m_neutral_subject.group(0), fixed, "it/this/that은 단수 주어이므로 단수 동사 형태가 필요합니다.", "high")
+
+        lowered = current_lowered()
+        m_singular_noun = re.search(r"\b(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered)
+        if m_singular_noun:
+            fixed = re.sub(
+                r"\b(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b",
+                lambda match: f"{match.group(1)} {match.group(2)} {_to_third_person_singular(match.group(3)) if match.group(3).lower() not in {'are', 'were'} else ('is' if match.group(3).lower() == 'are' else 'was')}",
+                working_sentence,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            apply_fix("subject_verb", m_singular_noun.group(0), fixed, "단수 명사 주어 뒤에는 3인칭 단수 동사 형태가 와야 합니다.", "high")
+
+        lowered = current_lowered()
+        m_bare_singular_noun = re.search(r"\b(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered)
+        if m_bare_singular_noun:
+            fixed = re.sub(
+                r"\b(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b",
+                lambda match: f"{match.group(1)} {_to_third_person_singular(match.group(2)) if match.group(2).lower() not in {'are', 'were'} else ('is' if match.group(2).lower() == 'are' else 'was')}",
+                working_sentence,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            apply_fix("subject_verb", m_bare_singular_noun.group(0), fixed, "단수 명사가 주어로 쓰였으면 단수 동사 형태를 맞춰야 합니다.", "high")
+
+        lowered = current_lowered()
+        m_num = re.search(r"\b(many|several|few)\s+(student|reason|problem|example|factor|benefit)\b", lowered)
         if m_num:
-            fixed = re.sub(r"\b(many|several|few)\s+student\b", r"\1 students", sentence, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "noun_number",
-                m_num.group(0),
-                fixed,
-                "many/several/few 뒤에는 보통 복수형 명사(students)가 필요합니다.",
-                "medium",
+            fixed = re.sub(
+                r"\b(many|several|few)\s+(student|reason|problem|example|factor|benefit)\b",
+                lambda match: f"{match.group(1)} {match.group(2)}s",
+                working_sentence,
+                count=1,
+                flags=re.IGNORECASE,
             )
+            apply_fix("noun_number", m_num.group(0), fixed, "many/several/few 뒤에는 보통 복수형 명사가 필요합니다.", "medium")
 
+        lowered = current_lowered()
         m_uncount2 = re.search(r"\bmany\s+information\b", lowered)
         if m_uncount2:
-            fixed = re.sub(r"\bmany\s+information\b", "much information", sentence, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "article",
-                m_uncount2.group(0),
-                fixed,
-                "information은 불가산명사이므로 many보다 much를 사용합니다.",
-                "high",
-            )
+            fixed = re.sub(r"\bmany\s+information\b", "much information", working_sentence, flags=re.IGNORECASE)
+            apply_fix("article", m_uncount2.group(0), fixed, "information은 불가산명사이므로 many보다 much를 사용합니다.", "high")
 
+        lowered = current_lowered()
         m_teacher = re.search(r"\bteacher\s+discuss\b", lowered)
         if m_teacher:
-            fixed = re.sub(r"\bteacher\s+discuss\b", "teacher discusses", sentence, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "subject_verb",
-                m_teacher.group(0),
-                fixed,
-                "단수 주어(teacher)에는 일반적으로 동사에 -es가 필요합니다.",
-                "high",
-            )
+            fixed = re.sub(r"\bteacher\s+discuss\b", "teacher discusses", working_sentence, flags=re.IGNORECASE)
+            apply_fix("subject_verb", m_teacher.group(0), fixed, "단수 주어(teacher)에는 일반적으로 동사에 -es가 필요합니다.", "high")
 
+        lowered = current_lowered()
+        m_i_agree = re.search(r"\bi\s+am\s+agree\b|\bi'm\s+agree\b", lowered)
+        if m_i_agree:
+            fixed = re.sub(r"\bi\s+am\s+agree\b", "I agree", working_sentence, count=1, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bi'm\s+agree\b", "I agree", fixed, count=1, flags=re.IGNORECASE)
+            apply_fix("style", m_i_agree.group(0), fixed, "agree는 보통 be동사 없이 동사로 직접 써서 I agree라고 표현합니다.", "high")
+
+        lowered = current_lowered()
         m_art1 = re.search(r"\ba\s+[aeiou]\w+", lowered)
         if m_art1:
-            fixed = re.sub(r"\ba\s+([aeiou]\w*)", r"an \1", sentence, count=1, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "article",
-                m_art1.group(0),
-                fixed,
-                "모음 소리로 시작하는 단어 앞에서는 a보다 an이 자연스럽습니다.",
-                "medium",
-            )
+            fixed = re.sub(r"\ba\s+([aeiou]\w*)", r"an \1", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("article", m_art1.group(0), fixed, "모음 소리로 시작하는 단어 앞에서는 a보다 an이 자연스럽습니다.", "medium")
 
+        lowered = current_lowered()
         m_art2 = re.search(r"\ban\s+[^aeiou\W]\w+", lowered)
         if m_art2:
-            fixed = re.sub(r"\ban\s+([^aeiou\W]\w*)", r"a \1", sentence, count=1, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "article",
-                m_art2.group(0),
-                fixed,
-                "자음 소리로 시작하는 단어 앞에서는 an보다 a가 자연스럽습니다.",
-                "medium",
-            )
+            fixed = re.sub(r"\ban\s+([^aeiou\W]\w*)", r"a \1", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("article", m_art2.group(0), fixed, "자음 소리로 시작하는 단어 앞에서는 an보다 a가 자연스럽습니다.", "medium")
 
+        lowered = current_lowered()
         m_uncount = re.search(r"\b(a|an)\s+(information|advice|research|evidence)\b", lowered)
         if m_uncount:
             fixed = re.sub(
                 r"\b(a|an)\s+(information|advice|research|evidence)\b",
                 r"\2",
-                sentence,
+                working_sentence,
                 count=1,
                 flags=re.IGNORECASE,
             )
-            push(
-                sentence,
-                sentence_start,
-                "article",
-                m_uncount.group(0),
-                fixed,
-                "information/advice/research/evidence는 셀 수 없는 명사로 관사 a/an을 보통 쓰지 않습니다.",
-                "medium",
-            )
+            apply_fix("article", m_uncount.group(0), fixed, "information/advice/research/evidence는 셀 수 없는 명사로 관사 a/an을 보통 쓰지 않습니다.", "medium")
 
-        m_prep = re.search(r"\bdiscuss about\b|\bmention about\b", lowered)
+        lowered = current_lowered()
+        m_internet = re.search(r"\bfrom\s+internet\b", lowered)
+        if m_internet:
+            fixed = re.sub(r"\bfrom\s+internet\b", "from the internet", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("article", m_internet.group(0), fixed, "internet은 일반적으로 the internet 형태가 더 자연스럽습니다.", "low")
+
+        lowered = current_lowered()
+        m_prep = re.search(r"\bdiscuss(?:es)? about\b|\bmentions? about\b", lowered)
         if m_prep:
-            fixed = re.sub(r"\bdiscuss about\b", "discuss", sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bdiscuss about\b", "discuss", working_sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bdiscusses about\b", "discusses", fixed, flags=re.IGNORECASE)
             fixed = re.sub(r"\bmention about\b", "mention", fixed, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "preposition",
-                m_prep.group(0),
-                fixed,
-                "discuss/mention은 보통 about 없이 직접 목적어를 받습니다.",
-                "medium",
-            )
+            fixed = re.sub(r"\bmentions about\b", "mentions", fixed, flags=re.IGNORECASE)
+            apply_fix("preposition", m_prep.group(0), fixed, "discuss/mention은 보통 about 없이 직접 목적어를 받습니다.", "medium")
 
+        lowered = current_lowered()
         m_prep2 = re.search(r"\bin nowadays\b|\bmarried with\b", lowered)
         if m_prep2:
-            fixed = re.sub(r"\bin nowadays\b", "nowadays", sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bin nowadays\b", "nowadays", working_sentence, flags=re.IGNORECASE)
             fixed = re.sub(r"\bmarried with\b", "married to", fixed, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "preposition",
-                m_prep2.group(0),
-                fixed,
-                "전치사 결합이 부자연스럽습니다. in nowadays -> nowadays, married with -> married to를 권장합니다.",
-                "medium",
-            )
+            apply_fix("preposition", m_prep2.group(0), fixed, "전치사 결합이 부자연스럽습니다. in nowadays -> nowadays, married with -> married to를 권장합니다.", "medium")
 
+        lowered = current_lowered()
         m_prep3 = re.search(r"\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered)
         if m_prep3:
-            fixed = re.sub(r"\bdepend of\b", "depend on", sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bdepend of\b", "depend on", working_sentence, flags=re.IGNORECASE)
             fixed = re.sub(r"\binterested on\b", "interested in", fixed, flags=re.IGNORECASE)
             fixed = re.sub(r"\bdiscuss on\b", "discuss", fixed, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "preposition",
-                m_prep3.group(0),
-                fixed,
-                "전치사 결합 오류입니다. depend on, interested in, discuss(about/on 없이)를 사용하세요.",
-                "high",
-            )
+            apply_fix("preposition", m_prep3.group(0), fixed, "전치사 결합 오류입니다. depend on, interested in, discuss(about/on 없이)를 사용하세요.", "high")
 
+        lowered = current_lowered()
         m_there = re.search(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered)
         if m_there:
-            fixed = re.sub(r"\bthere\s+is\b", "there are", sentence, count=1, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "subject_verb",
-                m_there.group(0),
-                fixed,
-                "복수 명사 앞에서는 there is보다 there are가 자연스럽습니다.",
-                "high",
-            )
+            fixed = re.sub(r"\bthere\s+is\b", lambda match: _match_case(match.group(0), "there are"), working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("subject_verb", m_there.group(0), fixed, "복수 명사 앞에서는 there is보다 there are가 자연스럽습니다.", "high")
 
+        lowered = current_lowered()
         m_oneof = re.search(r"\bone of\s+the\s+\w+\s+are\b", lowered)
         if m_oneof:
-            fixed = re.sub(r"\bare\b", "is", sentence, count=1, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "subject_verb",
-                m_oneof.group(0),
-                fixed,
-                "one of + 복수명사는 문장 주어가 one(단수)이므로 동사 is가 맞습니다.",
-                "high",
-            )
+            fixed = re.sub(r"\bare\b", "is", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("subject_verb", m_oneof.group(0), fixed, "one of + 복수명사는 문장 주어가 one(단수)이므로 동사 is가 맞습니다.", "high")
 
+        lowered = current_lowered()
         m_children = re.search(r"\b(people|children)\s+has\b", lowered)
         if m_children:
-            fixed = re.sub(r"\bhas\b", "have", sentence, count=1, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "subject_verb",
-                m_children.group(0),
-                fixed,
-                "people/children은 복수 취급하므로 has 대신 have를 사용합니다.",
-                "high",
-            )
+            fixed = re.sub(r"\bhas\b", "have", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("subject_verb", m_children.group(0), fixed, "people/children은 복수 취급하므로 has 대신 have를 사용합니다.", "high")
 
+        lowered = current_lowered()
         m_sv2 = re.search(r"\b(teacher|student|child)\s+have\b", lowered)
         if m_sv2:
-            fixed = re.sub(r"\bhave\b", "has", sentence, count=1, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "subject_verb",
-                m_sv2.group(0),
-                fixed,
-                "단수 주어(teacher/student/child)에는 have 대신 has를 씁니다.",
-                "high",
-            )
+            fixed = re.sub(r"\bhave\b", "has", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("subject_verb", m_sv2.group(0), fixed, "단수 주어(teacher/student/child)에는 have 대신 has를 씁니다.", "high")
 
+        lowered = current_lowered()
         m_of = re.search(r"\b(could|should|would)\s+of\b", lowered)
         if m_of:
-            fixed = re.sub(r"\bcould\s+of\b", "could have", sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bcould\s+of\b", "could have", working_sentence, flags=re.IGNORECASE)
             fixed = re.sub(r"\bshould\s+of\b", "should have", fixed, flags=re.IGNORECASE)
             fixed = re.sub(r"\bwould\s+of\b", "would have", fixed, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "style",
-                m_of.group(0),
-                fixed,
-                "구어체 표기(could/should/would of)는 문어체에서 could/should/would have가 정확합니다.",
-                "medium",
-            )
+            apply_fix("style", m_of.group(0), fixed, "구어체 표기(could/should/would of)는 문어체에서 could/should/would have가 정확합니다.", "medium")
 
+        lowered = current_lowered()
         m_comp = re.search(r"\bmore\s+better\b|\bmore\s+worse\b", lowered)
         if m_comp:
-            fixed = re.sub(r"\bmore\s+better\b", "better", sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bmore\s+better\b", "better", working_sentence, flags=re.IGNORECASE)
             fixed = re.sub(r"\bmore\s+worse\b", "worse", fixed, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "style",
-                m_comp.group(0),
-                fixed,
-                "비교급 중복 표현(more better/worse)은 감점 요인이므로 단일 비교급으로 쓰세요.",
-                "medium",
-            )
+            apply_fix("style", m_comp.group(0), fixed, "비교급 중복 표현(more better/worse)은 감점 요인이므로 단일 비교급으로 쓰세요.", "medium")
 
+        lowered = current_lowered()
         m_tense = re.search(r"\b(is|are)\b", lowered) if "yesterday" in lowered else None
         if m_tense:
-            fixed = re.sub(r"\bis\b", "was", sentence, count=1, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bis\b", "was", working_sentence, count=1, flags=re.IGNORECASE)
             fixed = re.sub(r"\bare\b", "were", fixed, count=1, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "tense",
-                m_tense.group(0),
-                fixed,
-                "과거 시점(yesterday)과 현재 시제(is/are)가 섞이면 시제 일관성이 깨집니다.",
-                "high",
-            )
+            apply_fix("tense", m_tense.group(0), fixed, "과거 시점(yesterday)과 현재 시제(is/are)가 섞이면 시제 일관성이 깨집니다.", "high")
 
+        lowered = current_lowered()
         m_tense2 = re.search(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered)
         if m_tense2:
-            fixed = re.sub(r"\b(i|he|she|it)\s+were\b", lambda m: f"{m.group(1)} was", sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\b(i|he|she|it)\s+were\b", lambda m: f"{m.group(1)} was", working_sentence, flags=re.IGNORECASE)
             fixed = re.sub(r"\b(we|they)\s+was\b", lambda m: f"{m.group(1)} were", fixed, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "tense",
-                m_tense2.group(0),
-                fixed,
-                "be동사 수일치/시제 형태가 어색합니다. I/he/she/it was, we/they were를 사용하세요.",
-                "high",
-            )
+            apply_fix("tense", m_tense2.group(0), fixed, "be동사 수일치/시제 형태가 어색합니다. I/he/she/it was, we/they were를 사용하세요.", "high")
 
-        token_count = len(_tokens(sentence))
+        lowered = current_lowered()
+        token_count = len(_tokens(working_sentence))
         if token_count > 32 and (", and " in lowered or ", but " in lowered or ", so " in lowered):
-            fixed = sentence.replace(", and", ". In addition,", 1).replace(", but", ". However,", 1).replace(", so", ". Therefore,", 1)
+            fixed = working_sentence.replace(", and", ". In addition,", 1).replace(", but", ". However,", 1).replace(", so", ". Therefore,", 1)
             m_runon = re.search(r",\s+(and|but|so)\b", lowered)
-            push(
-                sentence,
-                sentence_start,
-                "run_on",
-                m_runon.group(0) if m_runon else sentence,
-                fixed,
-                "긴 문장에 접속절이 과도하게 연결되면 run-on 위험이 커집니다. 두 문장으로 나누세요.",
-                "high",
-            )
+            apply_fix("run_on", m_runon.group(0) if m_runon else original_sentence, fixed, "긴 문장에 접속절이 과도하게 연결되면 run-on 위험이 커집니다. 두 문장으로 나누세요.", "high")
 
+        lowered = current_lowered()
         m_comma = re.search(r"\b[^,]+,\s+(i|we|they|he|she|it)\s+[a-z]+", lowered)
         if m_comma:
-            fixed = sentence.replace(",", ";", 1)
-            push(
-                sentence,
-                sentence_start,
-                "comma_splice",
-                m_comma.group(0),
-                fixed,
-                "독립절 2개를 콤마만으로 연결하면 comma splice 오류가 됩니다. 세미콜론/마침표를 사용하세요.",
-                "high",
-            )
+            fixed = working_sentence.replace(",", ";", 1)
+            apply_fix("comma_splice", m_comma.group(0), fixed, "독립절 2개를 콤마만으로 연결하면 comma splice 오류가 됩니다. 세미콜론/마침표를 사용하세요.", "high")
 
+        lowered = current_lowered()
         m_style = re.search(r"\b(firstly|secondly|thirdly)\b", lowered)
         if m_style:
-            fixed = re.sub(r"\bfirstly\b", "first", sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bfirstly\b", "first", working_sentence, flags=re.IGNORECASE)
             fixed = re.sub(r"\bsecondly\b", "second", fixed, flags=re.IGNORECASE)
             fixed = re.sub(r"\bthirdly\b", "third", fixed, flags=re.IGNORECASE)
-            push(
-                sentence,
-                sentence_start,
-                "style",
-                m_style.group(0),
-                fixed,
-                "TOEFL 라이팅에서는 first/second/third가 더 자연스럽고 간결합니다.",
-                "low",
-            )
+            apply_fix("style", m_style.group(0), fixed, "TOEFL 라이팅에서는 first/second/third가 더 자연스럽고 간결합니다.", "low")
 
-        if sentence and not re.search(r"[.!?]$", sentence):
-            fixed = sentence + "."
-            push(
-                sentence,
-                sentence_start,
-                "punctuation",
-                "missing sentence end punctuation",
-                fixed,
-                "문장 끝 마침표/물음표/느낌표가 없으면 문장 경계가 흐려집니다.",
-                "low",
-            )
+        if working_sentence and not re.search(r"[.!?]$", working_sentence):
+            fixed = working_sentence + "."
+            apply_fix("punctuation", "missing sentence end punctuation", fixed, "문장 끝 마침표/물음표/느낌표가 없으면 문장 경계가 흐려집니다.", "low")
 
     # Keep only unique (sentence, error_type) pairs for readability.
     unique: dict[tuple[str, str, str], dict[str, Any]] = {}

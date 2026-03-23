@@ -21,6 +21,10 @@
 | macOS 12+ | `TOEFLScorer-macOS.dmg` | Apple Silicon / Intel 지원 |
 | Windows 10/11 | `TOEFLScorer-Setup.exe` | 64비트 |
 
+Windows에서 설치 없이 바로 실행하려면 아래 포터블 파일도 바로 받을 수 있습니다.
+
+- https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer.exe
+
 > **참고:** 릴리즈 파일은 GitHub Actions에서 자동으로 빌드·업데이트됩니다. 항상 최신 버전이 유지됩니다.
 
 ---
@@ -149,6 +153,14 @@ powershell -ExecutionPolicy Bypass -File windows/build_installer.ps1
 ```
 
 완료 후 `dist_windows/installer/TOEFLScorer-Setup.exe`가 생성됩니다.
+
+#### Windows 포터블 실행파일(.exe) 만들기
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows/build_windows.ps1
+```
+
+완료 후 `dist_windows/TOEFLScorer.exe`가 생성됩니다.
 
 ### macOS 설치파일(.dmg) 만들기
 

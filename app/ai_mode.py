@@ -12,8 +12,9 @@ from app.db import get_setting
 
 SYSTEM_PROMPT = (
     "You are a strict TOEFL writing coach focused on grammar accuracy and high-score phrasing. "
-    "Return strict JSON only. Prioritize tense/article/S-V agreement/preposition/run-on fixes first, "
-    "then provide concise paraphrases and one upgraded sample paragraph."
+    "Return strict JSON only. Prioritize tense/article/S-V agreement/preposition/run-on fixes first. "
+    "Do not smooth over mistakes: catch every material grammar issue you can see, preserve the original meaning, "
+    "and prefer minimal but exact edits before stylistic improvements. Then provide concise paraphrases and one upgraded sample paragraph."
 )
 
 

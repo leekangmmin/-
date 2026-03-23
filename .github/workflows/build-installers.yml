@@ -105,6 +105,12 @@ jobs:
           name: TOEFLScorer-Windows-Setup
           path: dist_windows/installer/TOEFLScorer-Setup.exe
 
+      - name: Upload Windows portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TOEFLScorer-Windows-Portable
+          path: dist_windows/TOEFLScorer.exe
+
   publish-latest-release:
     needs: [build-macos-dmg, build-windows-setup]
     runs-on: ubuntu-latest
@@ -125,6 +131,13 @@ jobs:
           name: TOEFLScorer-Windows-Setup
           path: release-assets
 
+      - name: Download Windows portable artifact
+        if: needs.build-windows-setup.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: TOEFLScorer-Windows-Portable
+          path: release-assets
+
       - name: Publish rolling latest release
         uses: ncipollo/release-action@v1
         with:
@@ -134,6 +147,7 @@ jobs:
             자동 업데이트 릴리즈입니다.
             - macOS DMG
             - Windows Setup.exe
+            - Windows Portable EXE
           prerelease: true
           allowUpdates: true
           removeArtifacts: true

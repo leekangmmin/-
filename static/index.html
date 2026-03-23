@@ -15,13 +15,22 @@
     <header class="hero">
       <span class="kicker">토플첨삭기 by이강민</span>
       <h1>에세이를 붙여넣고 바로 채점하세요</h1>
-      <p class="sub">Task 2 이메일 &middot; Task 3 학술 토론 자동 인식 &middot; 6개 채점 기준 분석</p>
+      <p class="sub">Task 2 이메일 &middot; Task 3 학술 토론 자동 인식 &middot; 문법 첨삭과 점수 근거를 한 화면에서 바로 확인</p>
     </header>
 
     <section class="card input-card">
+      <div class="input-head">
+        <div>
+          <p class="section-kicker">WRITING INPUT</p>
+          <h2>답안 입력</h2>
+          <p class="input-note">입력창을 가장 먼저 보이게 정리했습니다. Windows와 macOS 앱에서도 여기서 바로 타이핑하면 됩니다.</p>
+        </div>
+        <div class="focus-tip">단축키: Cmd/Ctrl + Enter로 바로 채점</div>
+      </div>
       <textarea id="essayText" rows="16"
+        autofocus spellcheck="true" autocapitalize="sentences"
         placeholder="여기에 답안을 붙여넣으세요.&#10;이메일(Task 2)인지 학술 토론(Task 3)인지 자동으로 구분합니다."></textarea>
-      <div class="input-footer">
+      <div class="input-meta-row">
         <div id="detectBadge" class="detect-badge detect-none">유형 감지 대기 중…</div>
         <div class="live-stats">
           <span id="wordStat" class="stat-pill">단어 0</span>
@@ -29,7 +38,9 @@
           <span id="targetHint" class="stat-pill">권장 분량 -</span>
           <span id="draftStatus" class="stat-pill">자동저장 대기</span>
         </div>
-        <div class="input-controls">
+      </div>
+      <div class="input-footer">
+        <div class="control-group control-group-inputs">
           <label class="inline-label">목표 밴드(1-6)
             <input id="targetScore" type="number" min="1" max="6" step="0.5" value="5.0" />
           </label>
@@ -38,6 +49,8 @@
           </label>
           <button id="startTimerBtn" class="btn ghost">타이머 시작</button>
           <span id="timerDisplay" class="badge">30:00</span>
+        </div>
+        <div class="input-controls">
           <button id="checkRiskBtn" class="btn ghost">위험 체크</button>
           <button id="evaluateBtn" class="btn primary">제출하기 (채점)</button>
           <button id="insertTemplateBtn" class="btn ghost">템플릿 넣기</button>
@@ -55,56 +68,64 @@
       </div>
     </section>
 
-    <section class="card">
-      <div class="section-head">
-        <h2>AI 연결 설정 (ChatGPT / Claude / Gemini)</h2>
-        <button id="saveAiConfigBtn" class="btn primary sm">저장</button>
-      </div>
-      <div class="ai-config-grid">
-        <label class="inline-label">공급자
-          <select id="aiProviderSelect">
-            <option value="openai">ChatGPT (OpenAI)</option>
-            <option value="claude">Claude (Anthropic)</option>
-            <option value="gemini">Gemini (Google)</option>
-          </select>
-        </label>
-        <label class="inline-label">AI 사용
-          <input id="aiEnabledCheckbox" type="checkbox" />
-        </label>
-      </div>
-      <div class="ai-config-grid">
-        <label class="inline-label">OpenAI API Key
-          <input id="openaiApiKeyInput" type="password" placeholder="sk-..." />
-        </label>
-        <label class="inline-label">OpenAI Model
-          <input id="openaiModelInput" type="text" value="gpt-4.1-mini" />
-        </label>
-      </div>
-      <div class="ai-config-grid">
-        <label class="inline-label">Claude API Key
-          <input id="anthropicApiKeyInput" type="password" placeholder="sk-ant-..." />
-        </label>
-        <label class="inline-label">Claude Model
-          <input id="anthropicModelInput" type="text" value="claude-3-5-sonnet-latest" />
-        </label>
-      </div>
-      <div class="ai-config-grid">
-        <label class="inline-label">Gemini API Key
-          <input id="geminiApiKeyInput" type="password" placeholder="AIza..." />
-        </label>
-        <label class="inline-label">Gemini Model
-          <input id="geminiModelInput" type="text" value="gemini-1.5-pro-latest" />
-        </label>
-      </div>
-      <div class="ai-config-actions">
-        <button id="testAiConfigBtn" class="btn ghost">연결 테스트</button>
-        <span id="aiConfigStatus" class="muted small">저장 후 테스트를 실행하세요.</span>
-      </div>
+    <section class="card config-card">
+      <details>
+        <summary>
+          <span>AI 연결 설정 (ChatGPT / Claude / Gemini)</span>
+          <span class="muted small">필요할 때만 펼치기</span>
+        </summary>
+        <div class="config-body">
+          <div class="section-head">
+            <h2>AI 연결 설정</h2>
+            <button id="saveAiConfigBtn" class="btn primary sm">저장</button>
+          </div>
+          <div class="ai-config-grid">
+            <label class="inline-label">공급자
+              <select id="aiProviderSelect">
+                <option value="openai">ChatGPT (OpenAI)</option>
+                <option value="claude">Claude (Anthropic)</option>
+                <option value="gemini">Gemini (Google)</option>
+              </select>
+            </label>
+            <label class="inline-label">AI 사용
+              <input id="aiEnabledCheckbox" type="checkbox" />
+            </label>
+          </div>
+          <div class="ai-config-grid">
+            <label class="inline-label">OpenAI API Key
+              <input id="openaiApiKeyInput" type="password" placeholder="sk-..." />
+            </label>
+            <label class="inline-label">OpenAI Model
+              <input id="openaiModelInput" type="text" value="gpt-4.1-mini" />
+            </label>
+          </div>
+          <div class="ai-config-grid">
+            <label class="inline-label">Claude API Key
+              <input id="anthropicApiKeyInput" type="password" placeholder="sk-ant-..." />
+            </label>
+            <label class="inline-label">Claude Model
+              <input id="anthropicModelInput" type="text" value="claude-3-5-sonnet-latest" />
+            </label>
+          </div>
+          <div class="ai-config-grid">
+            <label class="inline-label">Gemini API Key
+              <input id="geminiApiKeyInput" type="password" placeholder="AIza..." />
+            </label>
+            <label class="inline-label">Gemini Model
+              <input id="geminiModelInput" type="text" value="gemini-1.5-pro-latest" />
+            </label>
+          </div>
+          <div class="ai-config-actions">
+            <button id="testAiConfigBtn" class="btn ghost">연결 테스트</button>
+            <span id="aiConfigStatus" class="muted small">저장 후 테스트를 실행하세요.</span>
+          </div>
+        </div>
+      </details>
     </section>
 
     <section id="resultSection" class="result-grid hidden">
 
-      <article class="card score-card">
+      <article class="card score-card primary-card">
         <div class="score-ring-wrap">
           <svg class="score-ring" viewBox="0 0 80 80">
             <circle cx="40" cy="40" r="34" stroke="rgba(255,255,255,0.25)" stroke-width="7" fill="none"/>
@@ -118,6 +139,7 @@
           </div>
         </div>
         <p class="score-label">예상 밴드 범위</p>
+        <p class="kv"><span class="kv-key">30점 환산</span><span id="score30">-</span></p>
         <p class="kv"><span class="kv-key">Writing 범위</span><span id="writingRange">-</span></p>
         <p class="kv"><span class="kv-key">Total 범위</span><span id="totalRange">-</span></p>
         <p class="kv"><span class="kv-key">분석 모드</span><span id="aiModeBadge" class="badge">-</span></p>
@@ -127,7 +149,7 @@
         <p id="confidenceReason" class="muted small"></p>
       </article>
 
-      <article class="card">
+      <article class="card primary-card summary-card">
         <h2>요약 피드백</h2>
         <p id="summaryKo" class="serif-text"></p>
         <p id="summaryEn" class="serif-text muted small"></p>
@@ -137,32 +159,32 @@
         <p class="kv"><span class="kv-key">반복 이슈</span><span id="personalIssues">-</span></p>
       </article>
 
-      <article class="card wide">
+      <article class="card wide primary-card">
         <h2>세부 루브릭 <span id="taskTag" class="task-tag"></span></h2>
         <div id="dimensionBars" class="rubric-bars"></div>
       </article>
 
-      <article class="card">
+      <article class="card secondary-card">
         <h2>✅ 강점</h2>
         <ul id="strengths" class="list"></ul>
       </article>
 
-      <article class="card">
+      <article class="card secondary-card">
         <h2>⚠️ 보완점</h2>
         <ul id="weaknesses" class="list"></ul>
       </article>
 
-      <article class="card wide">
+      <article class="card wide secondary-card">
         <h2>즉시 실행 플랜</h2>
         <ol id="actionPlan" class="list ordered"></ol>
       </article>
 
-      <article class="card wide">
+      <article class="card wide secondary-card">
         <h2>문장 첨삭</h2>
         <div id="sentenceEdits" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>템플릿 코치</h2>
         <div class="template-grid">
           <div class="template-block">
@@ -184,47 +206,47 @@
         </div>
       </article>
 
-      <article class="card">
+      <article class="card detail-card">
         <h2>문법 오류 유형</h2>
         <ul id="grammarStats" class="list"></ul>
       </article>
 
-      <article class="card wide">
+      <article class="card wide primary-card">
         <h2>정밀 문법 첨삭</h2>
         <div id="grammarCorrections" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide secondary-card">
         <h2>원문 오류 하이라이트</h2>
         <div id="essayHighlightPreview" class="essay-highlight"></div>
       </article>
 
-      <article class="card">
+      <article class="card detail-card">
         <h2>문법 감점 영향</h2>
         <div id="grammarImpact" class="edits"></div>
       </article>
 
-      <article class="card">
+      <article class="card detail-card">
         <h2>재채점 전후 예상</h2>
         <div id="beforeAfterProjection" class="edits"></div>
       </article>
 
-      <article class="card">
+      <article class="card detail-card">
         <h2>약점 사전</h2>
         <div id="weaknessDictionary" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>점수 근거 하이라이트</h2>
         <div id="scoreHighlights" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>주장–근거 매핑</h2>
         <div id="claimMap" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide secondary-card">
         <h2>목표 점수 리라이팅</h2>
         <p class="tblock-label">최소 수정</p>
         <p id="rewriteMinimal" class="serif-text"></p>
@@ -236,90 +258,90 @@
         </div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>고득점 패러프레이징 추천</h2>
         <div id="paraphraseSuggestions" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>제출 전 체크리스트</h2>
         <p class="kv"><span class="kv-key">총점</span><span id="checklistTotal">-</span></p>
         <div id="checklistItems" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>문법 집중 드릴</h2>
         <div id="grammarDrills" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>점수 시뮬레이터</h2>
         <div id="scoreSimulator" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide secondary-card">
         <h2>스마트 추천 액션</h2>
         <div id="smartRecommendations" class="edits"></div>
       </article>
 
-      <article class="card">
+      <article class="card secondary-card">
         <h2>추천 우선순위 Top 3</h2>
         <div id="topPriorityActions" class="edits"></div>
       </article>
 
-      <article class="card">
+      <article class="card secondary-card">
         <h2>목표 도달 ETA</h2>
         <div id="targetEta" class="edits"></div>
       </article>
 
-      <article class="card">
+      <article class="card detail-card">
         <h2>문장 다양성 코치</h2>
         <div id="sentenceVariety" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>수정 전/후 Diff</h2>
         <div id="revisionDiff" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>목표 밴드 전략</h2>
         <div id="targetBandStrategy" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>반복어 훈련</h2>
         <div id="repetitionTraining" class="edits"></div>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>시험관 모드 코멘트</h2>
         <ul id="examinerFeedback" class="list"></ul>
       </article>
 
-      <article class="card wide">
+      <article class="card wide detail-card">
         <h2>고득점 경로</h2>
         <ul id="boosterList" class="list"></ul>
       </article>
 
-      <article class="card">
+      <article class="card detail-card">
         <h2>개인 약점 랭킹(최근 10회)</h2>
         <ul id="weaknessRanking" class="list"></ul>
       </article>
 
-      <article class="card wide">
+      <article class="card wide secondary-card">
         <h2>주간 학습 계획</h2>
         <ul id="weeklyPlan" class="list"></ul>
       </article>
 
-      <article class="card">
+      <article class="card detail-card">
         <h2>샘플 답안 비교</h2>
         <p class="muted small">유사도(6.0 기준) <strong id="sampleOverlap">-</strong> / 6.0</p>
         <p class="kv"><span class="kv-key">포함</span><span id="sampleMatched">-</span></p>
         <p class="kv"><span class="kv-key">누락</span><span id="sampleMissing">-</span></p>
       </article>
 
-      <article class="card">
+      <article class="card detail-card">
         <h2>고득점 샘플 문단</h2>
         <p id="sampleParagraph" class="serif-text"></p>
       </article>

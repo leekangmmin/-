@@ -453,8 +453,6 @@ private final class AppViewModel: ObservableObject {
 	// Show prompt library popover
 	@Published var showPromptLibrary: Bool = false
 
-	private var keyMonitor: Any?
-
 	func bootstrap() {
 		// Restore draft if available
 		if let draft = UserDefaults.standard.string(forKey: "autosaveDraft"), !draft.isEmpty, essayText.isEmpty {
@@ -462,51 +460,6 @@ private final class AppViewModel: ObservableObject {
 		}
 		Task {
 			await refreshSupportData()
-		}
-	}
-
-	func installKeyboardFallback() {
-		guard keyMonitor == nil else { return }
-
-		keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-			guard let self else { return event }
-			if !NSApp.isActive {
-				return event
-			}
-
-			let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-			if mods.contains(.command) || mods.contains(.control) || mods.contains(.option) {
-				return event
-			}
-
-			if event.keyCode == 51 { // delete
-				if !self.essayText.isEmpty {
-					self.essayText.removeLast()
-				}
-				return nil
-			}
-
-			if event.keyCode == 36 || event.keyCode == 76 { // return
-				self.essayText.append("\n")
-				return nil
-			}
-
-			guard let chars = event.characters, !chars.isEmpty else {
-				return event
-			}
-			if chars.unicodeScalars.allSatisfy({ CharacterSet.controlCharacters.contains($0) }) {
-				return event
-			}
-
-			self.essayText.append(chars)
-			return nil
-		}
-	}
-
-	func removeKeyboardFallback() {
-		if let monitor = keyMonitor {
-			NSEvent.removeMonitor(monitor)
-			keyMonitor = nil
 		}
 	}
 
@@ -819,6 +772,7 @@ private struct AppTextArea: NSViewRepresentable {
 		textView.textContainerInset = NSSize(width: 8, height: 8)
 		textView.textContainer?.widthTracksTextView = true
 		textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+		textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
 		if text.isEmpty {
 			textView.string = ""
@@ -837,6 +791,7 @@ private struct AppTextArea: NSViewRepresentable {
 		if shouldFocus, let window = nsView.window {
 			if window.firstResponder !== textView {
 				window.makeFirstResponder(textView)
+				textView.setSelectedRange(NSRange(location: textView.string.count, length: 0))
 			}
 			DispatchQueue.main.async {
 				shouldFocus = false
@@ -867,8 +822,7 @@ private struct PanelCard<Content: View>: View {
 
 private struct ContentView: View {
 	@StateObject private var vm = AppViewModel()
-
-	@FocusState private var essayEditorFocused: Bool
+	@State private var shouldFocusEditor: Bool = false
 
 	var body: some View {
 		ZStack {
@@ -888,14 +842,10 @@ private struct ContentView: View {
 		}
 		.task {
 			vm.bootstrap()
-			vm.installKeyboardFallback()
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
 				NSApp.activate(ignoringOtherApps: true)
-				essayEditorFocused = true
+				shouldFocusEditor = true
 			}
-		}
-		.onDisappear {
-			vm.removeKeyboardFallback()
 		}
 	}
 
@@ -926,22 +876,20 @@ private struct ContentView: View {
 				.foregroundStyle(UITheme.textSub)
 
 			PanelCard(title: "INPUT.BUFFER") {
-				TextEditor(text: $vm.essayText)
-					.font(.system(size: 14, weight: .regular, design: .monospaced))
-					.foregroundStyle(UITheme.textMain)
-					.scrollContentBackground(.hidden)
-					.padding(8)
-					.background(
-						RoundedRectangle(cornerRadius: 8)
-							.fill(Color.white.opacity(vm.isDarkMode ? 0.07 : 1.0))
+				VStack(alignment: .leading, spacing: 8) {
+					Text("영문 답안을 바로 타이핑하거나 붙여넣으세요. 입력 지연 없이 바로 반응하도록 기본 편집기를 교체했습니다.")
+						.font(.system(size: 11, weight: .medium, design: .monospaced))
+						.foregroundStyle(UITheme.textSub)
+
+					AppTextArea(
+						text: $vm.essayText,
+						shouldFocus: $shouldFocusEditor,
+						placeholder: "Write or paste your TOEFL response here."
 					)
-					.overlay(
-						RoundedRectangle(cornerRadius: 8)
-							.stroke(UITheme.accentSoft, lineWidth: 1)
-					)
-					.frame(minHeight: 380)
-					.focused($essayEditorFocused)
-					.onChange(of: vm.essayText) { _ in vm.scheduleAutosave() }
+					.frame(minHeight: 420)
+					.clipShape(RoundedRectangle(cornerRadius: 8))
+				}
+				.onChange(of: vm.essayText) { _ in vm.scheduleAutosave() }
 
 				HStack {
 					Text("TOKENS: \(vm.essayText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count)")
@@ -961,14 +909,14 @@ private struct ContentView: View {
 				HStack(spacing: 8) {
 					Button("붙여넣기") {
 						vm.pasteFromClipboard()
-						essayEditorFocused = true
+						shouldFocusEditor = true
 					}
 					.buttonStyle(.bordered)
 					.tint(UITheme.accent)
 
 					Button("입력창 비우기") {
 						vm.essayText = ""
-						essayEditorFocused = true
+						shouldFocusEditor = true
 					}
 					.buttonStyle(.bordered)
 					.tint(UITheme.accent)
@@ -1122,14 +1070,10 @@ private struct ContentView: View {
 					overviewTab
 				case .progress:
 					progressTab
-				case .overview:
-					overviewTab
 				case .corrections:
 					correctionsTab
 				case .vocab:
 					vocabTab
-				case .progress:
-					progressTab
 				case .weekly:
 					weeklyTab
 				case .history:
@@ -1329,10 +1273,10 @@ private struct ContentView: View {
 			}
 			// Compare result overlay
 			if let cmp = vm.compareResult {
-				PanelCard(title: "\u2194️ 비교: #\(cmp.submission_1.submission_id) vs #\(cmp.submission_2.submission_id)") {
+				PanelCard(title: "Compare #\(cmp.submission_1.submission_id) vs #\(cmp.submission_2.submission_id)") {
 					HStack(spacing: 10) {
 						VStack(alignment: .leading, spacing: 4) {
-							Text("#\(cmp.submission_1.submission_id) \u2014 \(cmp.submission_1.created_at)")
+							Text("#\(cmp.submission_1.submission_id) | \(cmp.submission_1.created_at)")
 								.font(.system(size: 10, design: .monospaced)).foregroundStyle(UITheme.textSub)
 							Text(String(format: "%.1f점", cmp.submission_1.score_band_1_6))
 								.font(.system(size: 18, weight: .black, design: .monospaced)).foregroundStyle(UITheme.textMain)
@@ -1347,7 +1291,7 @@ private struct ContentView: View {
 								.foregroundStyle(cmp.score_delta >= 0 ? .green : .red)
 						}
 						VStack(alignment: .leading, spacing: 4) {
-							Text("#\(cmp.submission_2.submission_id) \u2014 \(cmp.submission_2.created_at)")
+							Text("#\(cmp.submission_2.submission_id) | \(cmp.submission_2.created_at)")
 								.font(.system(size: 10, design: .monospaced)).foregroundStyle(UITheme.textSub)
 							Text(String(format: "%.1f점", cmp.submission_2.score_band_1_6))
 								.font(.system(size: 18, weight: .black, design: .monospaced)).foregroundStyle(UITheme.textMain)
