@@ -3,7 +3,19 @@ $ErrorActionPreference = "Stop"
 Set-Location -Path (Join-Path $PSScriptRoot "..")
 
 # 1) Build TOEFLScorer.exe first
-& (Join-Path $PSScriptRoot "build_windows.ps1")
+$psHost = $null
+if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+    $psHost = "pwsh"
+} elseif (Get-Command powershell -ErrorAction SilentlyContinue) {
+    $psHost = "powershell"
+} else {
+    throw "PowerShell 실행 파일(pwsh/powershell)을 찾지 못했습니다."
+}
+
+& $psHost -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build_windows.ps1")
+if ($LASTEXITCODE -ne 0) {
+    throw "windows/build_windows.ps1 실행에 실패했습니다."
+}
 
 $candidates = @(
     "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
