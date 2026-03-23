@@ -1,0 +1,34 @@
+name: ToeflNativeApp
+options:
+  bundleIdPrefix: com.lee.gangmin
+  deploymentTarget:
+    macOS: "13.0"
+packages: {}
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    PRODUCT_BUNDLE_IDENTIFIER: com.lee.gangmin.toefl-native
+    MARKETING_VERSION: 1.0
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_ENTITLEMENTS: ToeflNativeApp.entitlements
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    INFOPLIST_FILE: Info.plist
+    DEVELOPMENT_TEAM: ""
+targets:
+  ToeflNativeApp:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: Sources/ToeflNativeApp
+      - path: Assets.xcassets
+        type: folder
+    settings:
+      base:
+        PRODUCT_NAME: 토플첨삭기 by이강민
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_EMIT_LOC_STRINGS: NO
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
