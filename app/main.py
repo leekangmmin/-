@@ -951,18 +951,104 @@ def download_report(submission_id: int) -> FileResponse:
     for day in weekly_plan[:7]:
         lines.append(safe(f"- {day}"))
 
+    section_titles = {
+        "Quick Visual Summary",
+        "Strengths",
+        "Weaknesses",
+        "Action Plan",
+        "Sentence Edits",
+        "Revision Diff (before -> after)",
+        "Auto Rewrite Essay",
+        "Target Rewrite (High-score Variants)",
+        "Upgraded Sample Paragraph",
+        "High-score Paraphrasing Suggestions",
+        "Pre-submit Checklist",
+        "Grammar Drills",
+        "Detailed Grammar Corrections",
+        "Grammar Penalty Impact",
+        "Score Simulator",
+        "Smart Recommendations",
+        "Target Band Strategy",
+        "Repetition Training",
+        "Examiner Mode Comments",
+        "Weekly Plan",
+    }
+
+    def ensure_space(height: float) -> None:
+        if pdf.get_y() + height > pdf.h - 18:
+            pdf.add_page()
+            # subtle page header for branded continuity
+            header_y = pdf.get_y()
+            pdf.set_fill_color(242, 246, 252)
+            pdf.set_draw_color(208, 216, 226)
+            pdf.rect(pdf.l_margin, header_y, pdf.w - pdf.l_margin - pdf.r_margin, 7, "DF")
+            pdf.set_xy(pdf.l_margin + 2.5, header_y + 1.8)
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(66, 83, 99)
+            pdf.cell(0, 4, "TOEFL WRITING COACHING REPORT")
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_y(header_y + 9.5)
+
+    def draw_section_bar(title: str) -> None:
+        ensure_space(10)
+        y = pdf.get_y()
+        pdf.set_fill_color(231, 240, 249)
+        pdf.set_draw_color(176, 197, 220)
+        pdf.rect(pdf.l_margin, y, pdf.w - pdf.l_margin - pdf.r_margin, 7.4, "DF")
+        pdf.set_xy(pdf.l_margin + 2.8, y + 1.8)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(35, 74, 112)
+        pdf.cell(0, 4, safe(title.upper()))
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_y(y + 9)
+
+    def draw_bullet_card(text: str) -> None:
+        wrapped = textwrap.wrap(text, width=88, break_long_words=True)
+        h = max(6.0, 3.8 * len(wrapped) + 2.2)
+        ensure_space(h + 1.5)
+        y = pdf.get_y()
+        pdf.set_fill_color(249, 251, 254)
+        pdf.set_draw_color(224, 232, 241)
+        pdf.rect(pdf.l_margin, y, pdf.w - pdf.l_margin - pdf.r_margin, h, "DF")
+
+        # left accent line
+        pdf.set_fill_color(56, 115, 171)
+        pdf.rect(pdf.l_margin, y, 1.6, h, "F")
+
+        pdf.set_xy(pdf.l_margin + 3.2, y + 1.5)
+        pdf.set_font("Helvetica", size=9)
+        for idx, chunk in enumerate(wrapped):
+            prefix = "• " if idx == 0 else "  "
+            pdf.cell(0, 3.6, safe(prefix + chunk), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_x(pdf.l_margin + 3.2)
+        pdf.set_y(y + h + 1.2)
+
     for idx, line in enumerate(lines):
         if idx == 0:
-            pass
+            continue
+
         if line == "Strengths":
             pdf.add_page()
             pdf.set_font("Helvetica", size=12)
-        wrapped = textwrap.wrap(line if line else " ", width=95, break_long_words=True)
-        if not wrapped:
-            pdf.cell(0, 7, " ", new_x="LMARGIN", new_y="NEXT")
+
+        if not line:
+            ensure_space(3.5)
+            pdf.cell(0, 3.5, " ", new_x="LMARGIN", new_y="NEXT")
             continue
+
+        if line in section_titles:
+            draw_section_bar(line)
+            continue
+
+        if line.startswith("- "):
+            draw_bullet_card(line[2:])
+            continue
+
+        wrapped = textwrap.wrap(line, width=95, break_long_words=True)
+        ensure_space(max(6.0, 4.3 * len(wrapped)))
+        pdf.set_font("Helvetica", size=10)
         for chunk in wrapped:
-            pdf.cell(0, 7, chunk, new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 4.6, safe(chunk), new_x="LMARGIN", new_y="NEXT")
 
     pdf.output(str(report_path))
     return FileResponse(
