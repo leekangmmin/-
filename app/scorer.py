@@ -236,13 +236,13 @@ def grammar_cap_status(essay_text: str) -> dict[str, float | bool | str]:
     if bool(profile["severe_breakdown"]):
         return {
             "applied": True,
-            "ceiling_0_5": 2.5,
+            "ceiling_0_5": 2.0,
             "reason": "문장 형식 파괴/중대한 문법 붕괴가 감지되어 고득점 상한이 적용되었습니다.",
         }
     if bool(profile["repeated_error"]):
         return {
             "applied": True,
-            "ceiling_0_5": 3.0,
+            "ceiling_0_5": 2.5,
             "reason": "반복적인 문법 오류가 감지되어 5.0+/6.0 도달이 어렵습니다.",
         }
     return {
@@ -443,17 +443,19 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
         weight = 2.4 if d.name == "Grammar" else 1.0
         weighted_sum += d.score * weight
         weight_total += weight
-    # Be intentionally conservative: default tendency is about -0.5 on 0-5 scale.
-    strict_penalty = 0.75
+    # Global calibration: keep estimated scores stricter to avoid over-scoring.
+    strict_penalty = 1.35
     if grammar_risk >= 10:
-        strict_penalty += 0.45
+        strict_penalty += 0.6
     elif grammar_risk >= 6:
-        strict_penalty += 0.3
+        strict_penalty += 0.45
     elif grammar_risk >= 3:
-        strict_penalty += 0.15
+        strict_penalty += 0.25
     if metrics.word_count < min_words:
-        strict_penalty += 0.2
+        strict_penalty += 0.35
     if metrics.paragraph_count <= 1:
+        strict_penalty += 0.35
+    if metrics.evidence_hits == 0:
         strict_penalty += 0.2
 
     total = _round_half((weighted_sum / weight_total) - strict_penalty - (0.1 if repetition_penalty >= 0.5 else 0.0))

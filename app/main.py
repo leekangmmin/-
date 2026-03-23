@@ -287,9 +287,9 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
     # Only apply prompt-fit adjustment when a real prompt was provided
     if payload.prompt_text.strip():
         if prompt_fit_data["score"] < 2.5:
-            total_score = max(0.0, total_score - 0.75)
-        elif prompt_fit_data["score"] > 4.25:
-            total_score = min(5.0, total_score + 0.25)
+            total_score = max(0.0, total_score - 1.0)
+        elif prompt_fit_data["score"] < 3.0:
+            total_score = max(0.0, total_score - 0.5)
 
     if len(payload.essay_text.split()) < 60:
         raise HTTPException(
