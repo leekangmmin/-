@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 Set-Location -Path (Join-Path $PSScriptRoot "..")
 
 # 1) Build TOEFLScorer.exe first
-powershell -ExecutionPolicy Bypass -File windows/build_windows.ps1
+& (Join-Path $PSScriptRoot "build_windows.ps1")
 
 $candidates = @(
     "$env:ProgramFiles\Inno Setup 6\ISCC.exe",

@@ -60,7 +60,7 @@ jobs:
 
       - name: Build Setup.exe
         shell: powershell
-        run: powershell -ExecutionPolicy Bypass -File windows/build_installer.ps1
+        run: .\windows\build_installer.ps1
 
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
