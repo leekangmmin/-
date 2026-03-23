@@ -71,7 +71,7 @@ jobs:
   publish-latest-release:
     needs: [build-macos-dmg, build-windows-setup]
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/main' && (needs.build-macos-dmg.result == 'success' || needs.build-windows-setup.result == 'success') }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && (needs.build-macos-dmg.result == 'success' || needs.build-windows-setup.result == 'success') }}
 
     steps:
       - name: Download macOS artifact
