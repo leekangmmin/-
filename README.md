@@ -1,5 +1,30 @@
 # 2026 개정 TOEFL 라이팅 첨삭 프로그램
 
+> FastAPI 기반 토플 라이팅 첨삭 프로그램 — macOS 네이티브 앱 / Windows 데스크톱 지원
+
+## 다운로드
+
+아래 버튼을 클릭하면 최신 버전이 바로 다운로드됩니다.
+
+<p align="center">
+  <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-macOS.dmg">
+    <img src="https://img.shields.io/badge/macOS-다운로드-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 다운로드" height="50"/>
+  </a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-Setup.exe">
+    <img src="https://img.shields.io/badge/Windows-다운로드-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 다운로드" height="50"/>
+  </a>
+</p>
+
+| 플랫폼 | 파일 | 요구사항 |
+|--------|------|----------|
+| macOS 12+ | `TOEFLScorer-macOS.dmg` | Apple Silicon / Intel 모두 지원 |
+| Windows 10/11 | `TOEFLScorer-Setup.exe` | 64비트, Python 불필요 |
+
+> **참고:** 릴리즈 파일은 GitHub Actions에서 자동으로 빌드·업데이트됩니다. 항상 최신 버전이 유지됩니다.
+
+---
+
 FastAPI 기반의 토플 라이팅 첨삭 웹앱입니다.
 
 macOS에서는 순수 SwiftUI 네이티브 앱으로 바로 실행할 수 있습니다.
@@ -158,3 +183,36 @@ macOS에서는 아래 스크립트로 설치 이미지(dmg)를 만듭니다.
 ## 주의
 
 - ETS 공식 채점을 대체하는 도구가 아니라, 학습용 추정/피드백 도구입니다.
+
+---
+
+## 기능 추천 (개발 로드맵)
+
+현재 앱을 더 강력하게 만들 수 있는 추천 기능 목록입니다.
+
+### 고우선순위 (학습 효과 직결)
+
+| 기능 | 설명 |
+|------|------|
+| ⏱ **내장 타이머** | TOEFL 실제 시험 시간(통합형 20분 / Discussion 10분) 기반 카운트다운 타이머 |
+| 📊 **어휘 수준 분석** | CEFR B2/C1 기준 학술 어휘 사용 비율 표시, 대체 어휘 제안 |
+| 🔁 **이전 답안 비교** | 같은 프롬프트에 대한 이전 제출과 현재 제출 나란히 비교 |
+| 📝 **자동 초안 저장** | 작성 중 2분마다 자동 저장, 실수로 지워도 복구 가능 |
+
+### 중우선순위 (사용 편의 개선)
+
+| 기능 | 설명 |
+|------|------|
+| 🌙 **다크 모드** | 장시간 학습 시 눈 피로 감소 |
+| 📋 **교정문 원클릭 복사** | 리라이팅 결과 전체를 버튼 하나로 클립보드에 복사 |
+| 🔍 **문장 단위 점수** | 각 문장에 점수(초록/노랑/빨강)를 인라인으로 표시 |
+| 🗂 **프롬프트 라이브러리** | 자주 쓰는 프롬프트 저장·불러오기 기능 |
+
+### 장기 목표 (고급 기능)
+
+| 기능 | 설명 |
+|------|------|
+| 🤖 **AI 리라이팅 강화** | GPT/Claude API 연동으로 문체·논리 흐름까지 개선하는 고급 첨삭 |
+| 📈 **주간 학습 리포트** | 주간 제출 횟수·평균 점수·주요 오류 패턴을 이메일/노티로 발송 |
+| 🎯 **목표 점수 달성 예측** | 현재 추세 기반으로 목표 점수 도달 예상 제출 횟수 계산 |
+| 🌐 **웹 버전 배포** | 설치 없이 브라우저에서 바로 사용 (Vercel/Railway 배포) |
