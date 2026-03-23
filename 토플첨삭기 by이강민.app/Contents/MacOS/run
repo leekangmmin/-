@@ -7,14 +7,23 @@ APP_DIR="$PROJECT_DIR/NativeMacApp"
 APP_BIN="$APP_DIR/.build/release/ToeflNativeApp"
 SERVER_BIN="$APP_BIN_DIR/toefl_server"
 
+
 # 1. FastAPI 서버 백그라운드 실행 (포트 8000)
 if [ -x "$SERVER_BIN" ]; then
   "$SERVER_BIN" &
   SERVER_PID=$!
   sleep 2
 else
-  osascript -e 'display dialog "FastAPI 서버 실행 파일이 없습니다.\nbuild_standalone_server.command를 먼저 실행해 주세요." buttons {"확인"} default button "확인"'
-  exit 1
+  # 바이너리가 없으면 시스템 python3로 직접 실행 (venv 필요 없음)
+  PYTHON_BIN="$(command -v python3 || command -v python)"
+  if [ -x "$PYTHON_BIN" ]; then
+    "$PYTHON_BIN" "$PROJECT_DIR/app/main.py" &
+    SERVER_PID=$!
+    sleep 2
+  else
+    osascript -e 'display dialog "FastAPI 서버 실행 파일/파이썬이 없습니다.\nPython3가 필요합니다." buttons {"확인"} default button "확인"'
+    exit 1
+  fi
 fi
 
 # 2. SwiftUI 클라이언트 실행

@@ -11,20 +11,28 @@ from app.db import get_setting
 
 
 SYSTEM_PROMPT = (
-    "You are a TOEFL writing correction engine, not a casual editor. "
-    "Return strict JSON only. Never wrap output with markdown. "
-    "Detect and correct every material grammar issue with high recall: "
-    "subject-verb agreement, tense consistency, article usage, preposition choice, run-on/comma splice, "
-    "relative pronouns, and common learner collocation errors. "
-    "When unsure, choose conservative minimal edits that preserve original meaning. "
-    "Do not paraphrase first; fix grammar first. "
-    "After grammar-focused thinking, provide concise TOEFL-style paraphrases and one improved sample paragraph. "
+    "You are a certified TOEFL iBT writing rater. "
+    "Strictly follow the official TOEFL iBT rubrics (2023) for scoring and feedback. "
+    "Evaluate essays on: 1) Task achievement (prompt fit), 2) Organization & logic, 3) Grammar & usage, 4) Vocabulary & collocation, 5) Sentence variety, 6) Academic/formal style, 7) Specificity of examples, 8) Coherence & cohesion, 9) Error density, 10) Word count. "
+    "Return only strict JSON, never markdown. "
+    "For each category, provide a 1-6 band score (0.5 increments), a short reason, and a prioritized improvement tip. "
+    "Be much stricter than ChatGPT default: penalize vague, repetitive, off-topic, or formulaic content. "
+    "If the essay is too short, off-topic, or has repeated errors, cap the score at 3.0 or below. "
+    "For grammar, catch all material errors: subject-verb, tense, article, preposition, run-on, pronoun, collocation, awkward phrasing, redundancy, and punctuation. "
+    "For vocabulary, penalize basic/childish/overused words, and reward precise, academic, and varied usage. "
+    "For logic, penalize weak or circular reasoning, lack of evidence, or poor paragraphing. "
+    "After scoring, return a JSON object with: {\"scores\":{...}, \"overall_band\":float, \"feedback\":{...}, \"paraphrases\":[], \"sample_paragraph\":str}. "
     "Keep the final style clear, formal, and exam-appropriate."
 )
 
 LOCAL_TOEFL_PROMPT = (
-    "Embedded local TOEFL mode: prioritize strict grammar correction over style, "
-    "preserve meaning, and produce exam-appropriate phrasing with minimal safe edits first."
+    "내장 TOEFL 채점 모드: 공식 TOEFL rubrics(2023)와 실제 채점관 스타일을 엄격히 모방. "
+    "문법, 논리, 어휘, 구조, 과제 적합성, 예시 구체성, 문장 다양성, 일관성, 오타, 어색한 표현, 반복 등 모든 항목을 엄격히 평가. "
+    "점수는 1.0~6.0(0.5 단위)로, 반복적/모호/오프토픽/문법오류가 많으면 3.0 이하로 제한. "
+    "문법은 주어-동사, 시제, 관사, 전치사, run-on, 대명사, collocation, 어색한 표현, 중복, 구두점까지 모두 잡아냄. "
+    "어휘는 초등/반복/진부/비정확 표현에 감점, 정확/학술/다양/고급 어휘에 가점. "
+    "논리는 약하거나 반복적이면 감점, 구체적 근거/예시/단락구조가 명확하면 가점. "
+    "최종 점수와 항목별 피드백을 JSON으로 반환."
 )
 
 
@@ -145,24 +153,24 @@ def _strict_fix_sentence(sentence: str) -> str:
 
 
 def _score_confidence(original: str, improved: str) -> dict[str, float]:
-    # Simple heuristic: more edits = lower confidence, more formal = higher
-    grammar = 1.0
-    logic = 1.0
-    vocab = 1.0
+    # 더 엄격한 기준: 조금만 바뀌어도 confidence를 낮게, 점수도 보수적으로
+    grammar = 0.8
+    logic = 0.8
+    vocab = 0.8
     if original.lower() == improved.lower():
         return {"grammar": 1.0, "logic": 1.0, "vocab": 1.0}
     # Grammar: penalize if verb/noun forms or structure changed
     if re.search(r"\b(is|are|was|were|has|have|had|do|does|did|can|will|would|should|could|may|might|must|shall)\b", original, re.I) and not re.search(r"\b(is|are|was|were|has|have|had|do|does|did|can|will|would|should|could|may|might|must|shall)\b", improved, re.I):
-        grammar -= 0.2
+        grammar -= 0.3
     if len(improved) < len(original) - 5:
-        logic -= 0.2
+        logic -= 0.3
     # Vocab: penalize if simple word replaced with more academic
     if re.search(r"children|essential|nowadays|improve|fewer|information", improved, re.I):
-        vocab += 0.1
+        vocab += 0.05
     if re.search(r"kids|very important|a lot of|get better|less people|informations", original, re.I):
-        vocab -= 0.2
+        vocab -= 0.3
     # Normalize
-    return {"grammar": max(0.5, min(grammar, 1.0)), "logic": max(0.5, min(logic, 1.0)), "vocab": max(0.5, min(vocab, 1.0))}
+    return {"grammar": max(0.3, min(grammar, 1.0)), "logic": max(0.3, min(logic, 1.0)), "vocab": max(0.3, min(vocab, 1.0))}
 
 from typing import Union
 
@@ -281,8 +289,8 @@ def ai_runtime_config() -> dict[str, Any]:
     claude_key = _read_cfg("anthropic_api_key", "")
     gemini_key = _read_cfg("gemini_api_key", "")
 
-    openai_model = _read_cfg("openai_model", "gpt-4.1-mini") or "gpt-4.1-mini"
-    claude_model = _read_cfg("anthropic_model", "claude-3-5-sonnet-latest") or "claude-3-5-sonnet-latest"
+    openai_model = _read_cfg("openai_model", "gpt-4o") or "gpt-4o"
+    claude_model = _read_cfg("anthropic_model", "claude-3-opus") or "claude-3-opus"
     gemini_model = _read_cfg("gemini_model", "gemini-1.5-pro-latest") or "gemini-1.5-pro-latest"
 
     return {
