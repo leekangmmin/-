@@ -32,7 +32,6 @@ macOS에서는 순수 SwiftUI 네이티브 앱으로 바로 실행할 수 있습
 ## 포함 기능
 
 - 통합형 / Academic Discussion 답안 평가
-- 0-5 점수 + 30점 환산 점수 추정
 - 4개 루브릭(Task Fulfillment, Organization, Development, Language Use)
 - 프롬프트 적합성 점수 + 매칭/누락 키워드
 - 주장-근거-설명 문장 매핑 시각화

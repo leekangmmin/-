@@ -297,3 +297,59 @@ class DashboardResponse(BaseModel):
     top_grammar_issues: list[GrammarIssueItem]
     grammar_error_trend: list[GrammarTrendPoint]
     recommended_focus: list[str]
+
+
+# ── Vocabulary Analysis ─────────────────────────────────────────────────────
+
+class VocabAnalysisRequest(BaseModel):
+    essay_text: str = Field(..., min_length=10, max_length=12000)
+
+
+class VocabAnalysisResponse(BaseModel):
+    total_words: int
+    unique_words: int
+    academic_word_count: int
+    academic_ratio: float
+    type_token_ratio: float
+    sophistication_score: float
+    academic_words_found: list[str]
+    collocations_found: list[str]
+    suggestions: list[str]
+
+
+# ── Weekly Report ───────────────────────────────────────────────────────────
+
+class DailySubmissionCount(BaseModel):
+    day: str
+    count: int
+    avg_score: float
+
+
+class WeeklyReportResponse(BaseModel):
+    week_attempts: int
+    week_avg_score: float
+    week_best_score: float
+    week_worst_score: float
+    most_common_error: str
+    recommendation: str
+    daily_submissions: list[DailySubmissionCount]
+
+
+# ── Submission Compare ──────────────────────────────────────────────────────
+
+class CompareScoreInfo(BaseModel):
+    submission_id: int
+    created_at: str
+    score_band_1_6: float
+    estimated_score_30: int
+    grammar_total: int
+    strengths: list[str]
+    weaknesses: list[str]
+
+
+class CompareResponse(BaseModel):
+    submission_1: CompareScoreInfo
+    submission_2: CompareScoreInfo
+    score_delta: float
+    grammar_delta: int
+    improvement_areas: list[str]
