@@ -86,9 +86,16 @@ from app.models import (
     SubmissionHistoryResponse,
     TemplateCoach,
     WeaknessCard,
+    VocabAnalysisRequest,
+    VocabAnalysisResponse,
+    WeeklyReportResponse,
+    DailySubmissionCount,
+    CompareResponse,
+    CompareScoreInfo,
 )
 from app.ai_mode import ai_enabled, ai_enhance
 from app.scorer import analyze_essay, grammar_cap_status, score_essay
+from app.vocab_analysis import analyze_vocabulary
 
 app = FastAPI(title="TOEFL Writing Evaluator", version="1.0.0")
 
@@ -475,6 +482,8 @@ def download_report(submission_id: int) -> FileResponse:
 
         for dim in dimensions[:6]:
             score = float(dim.get("score", 0.0))
+            # Internal dimension score is 0-5; display as user-facing 1-6 band.
+            display_score = max(1.0, min(6.0, score + 1.0))
             pdf.set_xy(left, y)
             pdf.cell(label_w, 6, safe(str(dim.get("name", ""))))
 
@@ -487,7 +496,7 @@ def download_report(submission_id: int) -> FileResponse:
             pdf.rect(track_x, y + 1.2, fill_w, 3.8, "F")
 
             pdf.set_xy(track_x + bar_w + 3, y)
-            pdf.cell(value_w, 6, f"{score:.1f}/5")
+            pdf.cell(value_w, 6, f"{display_score:.1f}/6")
             y += 7
 
         pdf.set_y(y + 2)
@@ -630,7 +639,7 @@ def download_report(submission_id: int) -> FileResponse:
         f"Analysis Mode: {result.get('ai_mode', 'local')}",
         "",
         f"Score Band (1-6): {result.get('score_band_1_6', 'n/a')}",
-        f"Estimated Score: {result.get('estimated_score_0_5', 0)} / 5.0",
+        f"TOEFL SCORE (MAX 6.0): {result.get('score_band_1_6', 'n/a')}",
         f"Converted Score: {result.get('estimated_score_30', 0)} / 30",
         f"Confidence: {result.get('confidence', 'n/a')}",
         safe(str(result.get('confidence_reason', ''))),
@@ -692,7 +701,7 @@ def download_report(submission_id: int) -> FileResponse:
     pdf.cell(0, 14, "TOEFL Writing Coaching Report", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", size=11)
     pdf.cell(0, 8, f"Submission #{submission_id} | {record['created_at']}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 7, f"Band: {result.get('score_band_1_6', 'n/a')}  |  Score(0-5): {result.get('estimated_score_0_5', 0)}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"TOEFL SCORE (MAX 6.0): {result.get('score_band_1_6', 'n/a')}", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 7, f"Target ETA: {target_eta.get('estimated_attempts', 'n/a')} attempts ({target_eta.get('pace_label', 'n/a')})", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 7, safe(str(target_eta.get("message", ""))), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 9, "", new_x="LMARGIN", new_y="NEXT")
@@ -866,4 +875,133 @@ def download_report(submission_id: int) -> FileResponse:
         report_path,
         media_type="application/pdf",
         filename=f"submission_{submission_id}.pdf",
+    )
+
+
+# ── Vocabulary Analysis ─────────────────────────────────────────────────────
+
+@app.post("/api/vocab-analysis", response_model=VocabAnalysisResponse)
+def vocab_analysis(payload: VocabAnalysisRequest) -> VocabAnalysisResponse:
+    result = analyze_vocabulary(payload.essay_text)
+    return VocabAnalysisResponse(**result)
+
+
+# ── Weekly Report ───────────────────────────────────────────────────────────
+
+@app.get("/api/weekly-report", response_model=WeeklyReportResponse)
+def weekly_report() -> WeeklyReportResponse:
+    from collections import defaultdict
+    from datetime import timedelta
+
+    rows = list_all_results(limit=500)
+    cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
+
+    week_rows = [r for r in rows if str(r.get("created_at", "")) >= cutoff]
+
+    if not week_rows:
+        return WeeklyReportResponse(
+            week_attempts=0,
+            week_avg_score=0.0,
+            week_best_score=0.0,
+            week_worst_score=0.0,
+            most_common_error="n/a",
+            recommendation="이번 주 제출 기록이 없습니다. 꾸준히 연습하세요!",
+            daily_submissions=[],
+        )
+
+    scores = [float(r.get("score_band_1_6", 1.0)) for r in week_rows]
+
+    error_counts: dict[str, int] = {}
+    for r in week_rows:
+        gs = r.get("grammar_stats", {})
+        for k in ["tense", "article", "preposition", "run_on", "subject_verb", "punctuation"]:
+            error_counts[k] = error_counts.get(k, 0) + int(gs.get(k, 0))
+    most_common = max(error_counts, key=lambda k: error_counts[k]) if error_counts else "n/a"
+
+    daily: dict[str, list[float]] = defaultdict(list)
+    for r in week_rows:
+        created = str(r.get("created_at", ""))
+        day = created[:10] if len(created) >= 10 else "unknown"
+        daily[day].append(float(r.get("score_band_1_6", 1.0)))
+
+    daily_list = [
+        DailySubmissionCount(day=day, count=len(v), avg_score=round(sum(v) / len(v), 2))
+        for day, v in sorted(daily.items())
+    ]
+
+    avg_s = round(sum(scores) / len(scores), 2)
+    best_s = round(max(scores), 2)
+    worst_s = round(min(scores), 2)
+
+    if avg_s >= 5.0:
+        rec = f"이번 주 평균 {avg_s}점으로 훌륭합니다! 꾸준히 유지하면 6.0 달성이 가능합니다."
+    elif avg_s >= 4.0:
+        rec = f"평균 {avg_s}점입니다. {most_common} 오류를 집중 교정하면 5.0+ 달성이 가능합니다."
+    else:
+        rec = f"평균 {avg_s}점입니다. {most_common} 교정을 우선 연습하고 매일 1회 이상 제출해보세요."
+
+    return WeeklyReportResponse(
+        week_attempts=len(week_rows),
+        week_avg_score=avg_s,
+        week_best_score=best_s,
+        week_worst_score=worst_s,
+        most_common_error=most_common,
+        recommendation=rec,
+        daily_submissions=daily_list,
+    )
+
+
+# ── Submission Compare ──────────────────────────────────────────────────────
+
+@app.get("/api/compare/{id1}/{id2}", response_model=CompareResponse)
+def compare_submissions(id1: int, id2: int) -> CompareResponse:
+    r1 = get_submission(id1)
+    r2 = get_submission(id2)
+    if r1 is None:
+        raise HTTPException(status_code=404, detail=f"Submission {id1} not found")
+    if r2 is None:
+        raise HTTPException(status_code=404, detail=f"Submission {id2} not found")
+
+    res1 = r1["result"]
+    res2 = r2["result"]
+
+    s1 = float(res1.get("score_band_1_6", 1.0))
+    s2 = float(res2.get("score_band_1_6", 1.0))
+    g1 = int(res1.get("grammar_stats", {}).get("total", 0))
+    g2 = int(res2.get("grammar_stats", {}).get("total", 0))
+
+    improvements: list[str] = []
+    if s2 > s1:
+        improvements.append(f"점수 향상: {s1} → {s2} (+{round(s2 - s1, 1)}점)")
+    elif s2 < s1:
+        improvements.append(f"점수 하락: {s1} → {s2} ({round(s2 - s1, 1)}점)")
+    else:
+        improvements.append("점수 동일")
+    if g2 < g1:
+        improvements.append(f"문법 오류 감소: {g1} → {g2} ({g1 - g2}개 감소)")
+    elif g2 > g1:
+        improvements.append(f"문법 오류 증가: {g1} → {g2} (+{g2 - g1}개)")
+
+    return CompareResponse(
+        submission_1=CompareScoreInfo(
+            submission_id=id1,
+            created_at=str(r1["created_at"])[:19],
+            score_band_1_6=s1,
+            estimated_score_30=int(res1.get("estimated_score_30", 0)),
+            grammar_total=g1,
+            strengths=res1.get("strengths", [])[:3],
+            weaknesses=res1.get("weaknesses", [])[:3],
+        ),
+        submission_2=CompareScoreInfo(
+            submission_id=id2,
+            created_at=str(r2["created_at"])[:19],
+            score_band_1_6=s2,
+            estimated_score_30=int(res2.get("estimated_score_30", 0)),
+            grammar_total=g2,
+            strengths=res2.get("strengths", [])[:3],
+            weaknesses=res2.get("weaknesses", [])[:3],
+        ),
+        score_delta=round(s2 - s1, 2),
+        grammar_delta=g2 - g1,
+        improvement_areas=improvements,
     )
