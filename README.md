@@ -53,7 +53,7 @@ uvicorn app.main:app --reload
 
 ## Windows 배포
 
-현재 macOS SwiftUI UI는 Windows에서 직접 실행되지 않으므로, Windows에서는 웹 UI를 1클릭 런처(exe)로 배포합니다.
+현재 macOS SwiftUI UI는 Windows에서 직접 실행되지 않으므로, Windows에서는 FastAPI + 데스크톱 웹뷰(pywebview) 런처(exe)로 배포합니다.
 
 - 런처 소스: [windows/app_launcher.py](windows/app_launcher.py)
 - Windows 즉시 실행(소스 기반): [windows/run_windows.bat](windows/run_windows.bat)
@@ -70,6 +70,45 @@ powershell -ExecutionPolicy Bypass -File windows/build_windows.ps1
 ```
 
 빌드가 완료되면 `dist_windows/TOEFLScorer.exe`가 생성됩니다.
+
+### Windows 설치파일(Setup.exe) 만들기
+
+1. Inno Setup 6 설치
+2. 아래 명령 실행
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows/build_installer.ps1
+```
+
+완료되면 `dist_windows/installer/TOEFLScorer-Setup.exe`가 생성됩니다.
+
+실행 시 기본 동작:
+
+- 서버를 자동 실행
+- 앱 창 내부(데스크톱 웹뷰)에서 UI 표시
+- 웹뷰 런타임 이슈가 있으면 자동으로 브라우저 모드로 폴백
+
+## macOS 설치파일(.dmg) 만들기
+
+macOS에서는 아래 스크립트로 설치 이미지(dmg)를 만듭니다.
+
+```bash
+./macos/build_installer.command
+```
+
+완료되면 `dist_macos/TOEFLScorer-macOS.dmg`가 생성됩니다.
+
+## GitHub Actions로 설치파일 자동 빌드
+
+- 워크플로 파일: [.github/workflows/build-installers.yml](.github/workflows/build-installers.yml)
+- 트리거:
+  - 수동 실행(`workflow_dispatch`)
+  - `v*` 태그 푸시
+
+실행 후 GitHub Actions 아티팩트에서 아래 파일을 다운로드할 수 있습니다.
+
+- `TOEFLScorer-macOS-dmg`
+- `TOEFLScorer-Windows-Setup`
 
 ### 네이티브 앱 확장 기능
 

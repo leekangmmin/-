@@ -23,6 +23,7 @@ if (Test-Path $distDir) {
   --clean `
   --windowed `
   --onefile `
+    --hidden-import webview `
   --name "TOEFLScorer" `
   --distpath $distDir `
   --paths "." `

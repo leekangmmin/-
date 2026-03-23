@@ -1,0 +1,64 @@
+name: Build Installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-macos-dmg:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare virtual environment
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt
+
+      - name: Ensure launcher executable bit
+        run: chmod +x "실행.command" "macos/build_installer.command"
+
+      - name: Build DMG installer
+        run: ./macos/build_installer.command
+
+      - name: Upload macOS installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TOEFLScorer-macOS-dmg
+          path: dist_macos/TOEFLScorer-macOS.dmg
+
+  build-windows-setup:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Setup.exe
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File windows/build_installer.ps1
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TOEFLScorer-Windows-Setup
+          path: dist_windows/installer/TOEFLScorer-Setup.exe

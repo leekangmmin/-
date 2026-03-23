@@ -7,3 +7,6 @@ data/*.db
 data/app.log
 data/app.pid
 data/reports/
+dist_macos/
+dist_windows/
+NativeMacApp/.build/
