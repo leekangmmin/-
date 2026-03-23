@@ -7,7 +7,7 @@ powershell -ExecutionPolicy Bypass -File windows/build_windows.ps1
 
 $candidates = @(
     "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
-    "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe"
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 )
 
 $iscc = $null
