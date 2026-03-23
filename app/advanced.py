@@ -166,17 +166,20 @@ def grammar_error_stats(essay_text: str) -> dict:
     run_on += sum(bool(re.search(r",\s+(i|we|they|he|she|it)\s+\w+", s.lower())) for s in sentences)
     article = len(re.findall(r"\b(a|an)\s+[aeiou]\w+", lowered))
     article += len(re.findall(r"\b(an)\s+[^aeiou\W]\w+", lowered))
-    article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence)\b", lowered))
+    article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence|homework|luggage)\b", lowered))
+    article += len(re.findall(r"\bmany\s+information\b|\bfewer\s+peoples\b", lowered))
 
     preposition = len(re.findall(r"\bdiscuss about\b|\bmention about\b", lowered))
-    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b", lowered))
+    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered))
     tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
     tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
+    tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
     subject_verb = len(re.findall(r"\b(people|students|they)\s+is\b", lowered))
     subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do)\b", lowered))
     subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
     subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
     subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
+    subject_verb += len(re.findall(r"\b(teacher|student|child)\s+have\b", lowered))
     punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
     punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
     punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
@@ -289,6 +292,19 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
                 "medium",
             )
 
+        m_uncount2 = re.search(r"\bmany\s+information\b", lowered)
+        if m_uncount2:
+            fixed = re.sub(r"\bmany\s+information\b", "much information", sentence, flags=re.IGNORECASE)
+            push(
+                sentence,
+                sentence_start,
+                "article",
+                m_uncount2.group(0),
+                fixed,
+                "information은 불가산명사이므로 many보다 much를 사용합니다.",
+                "high",
+            )
+
         m_teacher = re.search(r"\bteacher\s+discuss\b", lowered)
         if m_teacher:
             fixed = re.sub(r"\bteacher\s+discuss\b", "teacher discusses", sentence, flags=re.IGNORECASE)
@@ -375,6 +391,21 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
                 "medium",
             )
 
+        m_prep3 = re.search(r"\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered)
+        if m_prep3:
+            fixed = re.sub(r"\bdepend of\b", "depend on", sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\binterested on\b", "interested in", fixed, flags=re.IGNORECASE)
+            fixed = re.sub(r"\bdiscuss on\b", "discuss", fixed, flags=re.IGNORECASE)
+            push(
+                sentence,
+                sentence_start,
+                "preposition",
+                m_prep3.group(0),
+                fixed,
+                "전치사 결합 오류입니다. depend on, interested in, discuss(about/on 없이)를 사용하세요.",
+                "high",
+            )
+
         m_there = re.search(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered)
         if m_there:
             fixed = re.sub(r"\bthere\s+is\b", "there are", sentence, count=1, flags=re.IGNORECASE)
@@ -411,6 +442,19 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
                 m_children.group(0),
                 fixed,
                 "people/children은 복수 취급하므로 has 대신 have를 사용합니다.",
+                "high",
+            )
+
+        m_sv2 = re.search(r"\b(teacher|student|child)\s+have\b", lowered)
+        if m_sv2:
+            fixed = re.sub(r"\bhave\b", "has", sentence, count=1, flags=re.IGNORECASE)
+            push(
+                sentence,
+                sentence_start,
+                "subject_verb",
+                m_sv2.group(0),
+                fixed,
+                "단수 주어(teacher/student/child)에는 have 대신 has를 씁니다.",
                 "high",
             )
 
@@ -454,6 +498,20 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
                 m_tense.group(0),
                 fixed,
                 "과거 시점(yesterday)과 현재 시제(is/are)가 섞이면 시제 일관성이 깨집니다.",
+                "high",
+            )
+
+        m_tense2 = re.search(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered)
+        if m_tense2:
+            fixed = re.sub(r"\b(i|he|she|it)\s+were\b", lambda m: f"{m.group(1)} was", sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\b(we|they)\s+was\b", lambda m: f"{m.group(1)} were", fixed, flags=re.IGNORECASE)
+            push(
+                sentence,
+                sentence_start,
+                "tense",
+                m_tense2.group(0),
+                fixed,
+                "be동사 수일치/시제 형태가 어색합니다. I/he/she/it was, we/they were를 사용하세요.",
                 "high",
             )
 

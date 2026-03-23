@@ -146,11 +146,20 @@ def _grammar_risk_count(essay_text: str) -> int:
     article += len(re.findall(r"\b(an)\s+[^aeiou\W]\w+", lowered))
     article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence)\b", lowered))
     preposition = len(re.findall(r"\bdiscuss about\b|\bmention about\b", lowered))
+    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b", lowered))
     tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
     tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
+    tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
     subject_verb = len(re.findall(r"\b(people|students|they)\s+is\b", lowered))
     subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do)\b", lowered))
+    subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
+    subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
+    subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
     punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
+    punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
+    punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
+    style = len(re.findall(r"\b(could|should|would)\s+of\b", lowered))
+    style += len(re.findall(r"\bmore\s+better\b|\bmore\s+worse\b", lowered))
     fragment_like = 0
     for s in sentences:
         tokens = re.findall(r"[A-Za-z']+", s)
@@ -164,7 +173,7 @@ def _grammar_risk_count(essay_text: str) -> int:
         if not has_verb:
             fragment_like += 1
 
-    return run_on + comma_splice + article + preposition + tense + subject_verb + punctuation + fragment_like
+    return run_on + comma_splice + article + preposition + tense + subject_verb + punctuation + fragment_like + style
 
 
 def _grammar_risk_profile(essay_text: str) -> dict[str, int | bool]:
@@ -177,11 +186,20 @@ def _grammar_risk_profile(essay_text: str) -> dict[str, int | bool]:
     article += len(re.findall(r"\b(an)\s+[^aeiou\W]\w+", lowered))
     article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence)\b", lowered))
     preposition = len(re.findall(r"\bdiscuss about\b|\bmention about\b", lowered))
+    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b", lowered))
     tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
     tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
+    tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
     subject_verb = len(re.findall(r"\b(people|students|they)\s+is\b", lowered))
     subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do)\b", lowered))
+    subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
+    subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
+    subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
     punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
+    punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
+    punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
+    style = len(re.findall(r"\b(could|should|would)\s+of\b", lowered))
+    style += len(re.findall(r"\bmore\s+better\b|\bmore\s+worse\b", lowered))
     fragment_like = 0
     for s in sentences:
         tokens = re.findall(r"[A-Za-z']+", s)
@@ -195,7 +213,7 @@ def _grammar_risk_profile(essay_text: str) -> dict[str, int | bool]:
         if not has_verb:
             fragment_like += 1
 
-    total = run_on + comma_splice + article + preposition + tense + subject_verb + punctuation + fragment_like
+    total = run_on + comma_splice + article + preposition + tense + subject_verb + punctuation + fragment_like + style
     repeated_error = total >= 6 or max(run_on + comma_splice, article, preposition, tense, subject_verb, punctuation, fragment_like) >= 3
     severe_breakdown = (run_on + comma_splice) >= 3 or fragment_like >= 2 or punctuation >= 3 or total >= 10
     return {
@@ -409,7 +427,16 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
         weight = 2.4 if d.name == "Grammar" else 1.0
         weighted_sum += d.score * weight
         weight_total += weight
-    total = _round_half((weighted_sum / weight_total) - (0.1 if repetition_penalty >= 0.5 else 0.0))
+    # Be intentionally conservative: default tendency is about -0.5 on 0-5 scale.
+    strict_penalty = 0.5
+    if grammar_risk >= 10:
+        strict_penalty += 0.25
+    elif grammar_risk >= 6:
+        strict_penalty += 0.15
+    if metrics.word_count < min_words:
+        strict_penalty += 0.1
+
+    total = _round_half((weighted_sum / weight_total) - strict_penalty - (0.1 if repetition_penalty >= 0.5 else 0.0))
 
     # Repeated grammar errors or broken sentence form make >4.5 band difficult.
     # (4.5 band corresponds to 3.5 on the 0-5 internal scale.)
