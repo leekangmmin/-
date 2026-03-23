@@ -864,14 +864,42 @@ def confidence_reason(
     return f"{level.upper()} 신뢰도 판단 근거: " + "; ".join(reasons[:3])
 
 
+def _to_band_1_6(score_0_5: float) -> float:
+    return round(max(1.0, min(6.0, score_0_5 + 1.0)) * 2) / 2
+
+
+def _rewrite_priority_action(weakness: str) -> str:
+    lowered = weakness.lower()
+    if "분량" in weakness:
+        return "최소 120단어 이상으로 늘리고, 주장-근거-결론 순서로 논리를 완성하세요."
+    if "문단" in weakness:
+        return "문단을 3개 이상으로 나누고, 각 문단 첫 문장에 핵심 주장 하나만 두세요."
+    if "근거" in weakness or "예시" in weakness:
+        return "주장마다 구체적 예시 1개와, 그 예시가 왜 중요한지 설명 1문장을 붙이세요."
+    if "문법" in weakness or "수일치" in weakness or "시제" in weakness:
+        return "각 문장에서 주어-동사 수일치와 시제를 먼저 확인한 뒤 제출하세요."
+    if "프롬프트" in weakness or "키워드" in weakness or "적합성" in weakness:
+        return "문제 핵심 키워드 2개 이상을 본문에 직접 넣어 질문에 정확히 답하세요."
+    if "문장" in weakness and ("경계" in weakness or "run-on" in lowered):
+        return "긴 문장은 둘로 끊고 접속사는 하나만 남겨 문장 경계를 분명히 하세요."
+    if weakness.endswith(("하세요.", "합니다.", "입니다.")):
+        return weakness
+    return weakness + "을 먼저 고치세요."
+
+
 def bilingual_summary(total_score: float, prompt_fit_score: float, weaknesses: list[str]) -> dict:
+    score_band = _to_band_1_6(total_score)
+    prompt_fit_band = _to_band_1_6(prompt_fit_score)
+    priority = _rewrite_priority_action(weaknesses[0] if weaknesses else "근거를 더 구체적으로 쓰세요")
     summary_ko = (
-        f"예상 점수는 {total_score:.1f}/5.0이며, 프롬프트 적합성은 {prompt_fit_score:.1f}/5.0입니다. "
-        f"우선 보완 과제는 {weaknesses[0] if weaknesses else '근거 구체화'} 입니다."
+        f"현재 예상 밴드는 {score_band:.1f}/6.0입니다. "
+        f"주제 반영도는 {prompt_fit_band:.1f}/6.0입니다. "
+        f"가장 먼저 할 일은 {priority}"
     )
     summary_en = (
-        f"Your estimated score is {total_score:.1f}/5.0, with a prompt-fit score of {prompt_fit_score:.1f}/5.0. "
-        f"Top priority: {weaknesses[0] if weaknesses else 'add more specific support'}"
+        f"Your current estimated band is {score_band:.1f}/6.0. "
+        f"Your task-response fit is {prompt_fit_band:.1f}/6.0. "
+        f"Top priority: {priority}"
     )
     return {"summary_ko": summary_ko, "summary_en": summary_en}
 
@@ -1169,7 +1197,7 @@ def build_examiner_feedback(total_score_0_5: float, grammar_stats: dict[str, int
         }
 
     comments = []
-    comments.append(f"Estimated: {total_score_0_5:.1f}/5.0")
+    comments.append(f"Estimated band: {_to_band_1_6(total_score_0_5):.1f}/6.0")
     if grammar_stats.get("total", 0) >= 4:
         comments.append("Grammar control is unstable. Repeated errors limit higher bands.")
     else:

@@ -145,16 +145,20 @@ def _grammar_risk_count(essay_text: str) -> int:
     article = len(re.findall(r"\b(a|an)\s+[aeiou]\w+", lowered))
     article += len(re.findall(r"\b(an)\s+[^aeiou\W]\w+", lowered))
     article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence)\b", lowered))
+    article += len(re.findall(r"\bmany\s+information\b|\bfewer\s+peoples\b", lowered))
     preposition = len(re.findall(r"\bdiscuss about\b|\bmention about\b", lowered))
-    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b", lowered))
+    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered))
     tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
     tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
     tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
     subject_verb = len(re.findall(r"\b(people|students|they)\s+is\b", lowered))
-    subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do)\b", lowered))
+    subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do|need|want|make|mention)\b", lowered))
+    subject_verb += len(re.findall(r"\b(they|we)\s+needs\b|\bi\s+goes\b", lowered))
     subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
     subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
     subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
+    subject_verb += len(re.findall(r"\b(teacher|student|child)\s+have\b", lowered))
+    subject_verb += len(re.findall(r"\b(many|several|few)\s+student\b", lowered))
     punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
     punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
     punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
@@ -185,16 +189,20 @@ def _grammar_risk_profile(essay_text: str) -> dict[str, int | bool]:
     article = len(re.findall(r"\b(a|an)\s+[aeiou]\w+", lowered))
     article += len(re.findall(r"\b(an)\s+[^aeiou\W]\w+", lowered))
     article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence)\b", lowered))
+    article += len(re.findall(r"\bmany\s+information\b|\bfewer\s+peoples\b", lowered))
     preposition = len(re.findall(r"\bdiscuss about\b|\bmention about\b", lowered))
-    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b", lowered))
+    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered))
     tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
     tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
     tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
     subject_verb = len(re.findall(r"\b(people|students|they)\s+is\b", lowered))
-    subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do)\b", lowered))
+    subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do|need|want|make|mention)\b", lowered))
+    subject_verb += len(re.findall(r"\b(they|we)\s+needs\b|\bi\s+goes\b", lowered))
     subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
     subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
     subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
+    subject_verb += len(re.findall(r"\b(teacher|student|child)\s+have\b", lowered))
+    subject_verb += len(re.findall(r"\b(many|several|few)\s+student\b", lowered))
     punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
     punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
     punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
@@ -228,14 +236,14 @@ def grammar_cap_status(essay_text: str) -> dict[str, float | bool | str]:
     if bool(profile["severe_breakdown"]):
         return {
             "applied": True,
-            "ceiling_0_5": 3.0,
+            "ceiling_0_5": 2.5,
             "reason": "문장 형식 파괴/중대한 문법 붕괴가 감지되어 고득점 상한이 적용되었습니다.",
         }
     if bool(profile["repeated_error"]):
         return {
             "applied": True,
-            "ceiling_0_5": 3.5,
-            "reason": "반복적인 문법 오류가 감지되어 4.5+ 달성이 어렵습니다.",
+            "ceiling_0_5": 3.0,
+            "reason": "반복적인 문법 오류가 감지되어 5.0+/6.0 도달이 어렵습니다.",
         }
     return {
         "applied": False,
@@ -361,14 +369,22 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
         grammar += 0.75
     elif metrics.short_sentence_ratio <= 0.25:
         grammar += 0.25
-    if grammar_risk >= 8:
+    if grammar_risk >= 10:
+        grammar -= 2.25
+    elif grammar_risk >= 7:
         grammar -= 1.75
-    elif grammar_risk >= 5:
-        grammar -= 1.25
-    elif grammar_risk >= 3:
-        grammar -= 0.75
+    elif grammar_risk >= 4:
+        grammar -= 1.1
+    elif grammar_risk >= 2:
+        grammar -= 0.6
     if bool(grammar_profile.get("severe_breakdown")):
-        grammar -= 0.5
+        grammar -= 0.75
+    if grammar_risk >= 10:
+        grammar = min(grammar, 2.75)
+    elif grammar_risk >= 7:
+        grammar = min(grammar, 3.0)
+    elif grammar_risk >= 5:
+        grammar = min(grammar, 3.5)
 
     # ── Vocabulary (어휘 / 관용어구) ──────────────────────────────────────────
     vocabulary = 2.0
@@ -428,13 +444,17 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
         weighted_sum += d.score * weight
         weight_total += weight
     # Be intentionally conservative: default tendency is about -0.5 on 0-5 scale.
-    strict_penalty = 0.5
+    strict_penalty = 0.75
     if grammar_risk >= 10:
-        strict_penalty += 0.25
+        strict_penalty += 0.45
     elif grammar_risk >= 6:
+        strict_penalty += 0.3
+    elif grammar_risk >= 3:
         strict_penalty += 0.15
     if metrics.word_count < min_words:
-        strict_penalty += 0.1
+        strict_penalty += 0.2
+    if metrics.paragraph_count <= 1:
+        strict_penalty += 0.2
 
     total = _round_half((weighted_sum / weight_total) - strict_penalty - (0.1 if repetition_penalty >= 0.5 else 0.0))
 

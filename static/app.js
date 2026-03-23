@@ -200,12 +200,13 @@ function renderDimensionBars(dimensions) {
   dimensionBarsEl.innerHTML = "";
   dimensions.forEach(function(d) {
     const pct = (d.score / 5) * 100;
+    const band = Math.max(1, Math.min(6, d.score + 1));
     const row = document.createElement("div");
     row.className = "rubric-row";
     row.innerHTML =
       '<span class="rubric-name">' + d.name + '</span>' +
       '<div class="rubric-track"><div class="rubric-fill" style="width:0%" data-pct="' + pct + '"></div></div>' +
-      '<span class="rubric-val">' + d.score.toFixed(1) + '</span>';
+      '<span class="rubric-val">' + band.toFixed(1) + ' / 6</span>';
     dimensionBarsEl.appendChild(row);
   });
   requestAnimationFrame(function() {
@@ -395,7 +396,7 @@ function renderGrammarImpact(items) {
     box.innerHTML =
       "<p><strong>이슈</strong>: " + item.issue + "</p>" +
       "<p><strong>횟수</strong>: " + item.count + "</p>" +
-      "<p><strong>예상 감점(0-5)</strong>: -" + item.estimated_penalty_0_5 + "</p>";
+      "<p><strong>예상 감점 영향</strong>: -" + item.estimated_penalty_0_5 + "점</p>";
     grammarImpactEl.appendChild(box);
   });
 }
@@ -406,9 +407,9 @@ function renderBeforeAfterProjection(p) {
   const box = document.createElement("div");
   box.className = "edit-item";
   box.innerHTML =
-    "<p><strong>현재</strong>: " + p.current_score_0_5.toFixed(1) + " / 5.0 (Band " + p.current_band_1_6.toFixed(1) + ")</p>" +
-    "<p><strong>교정 후 예상</strong>: " + p.projected_score_0_5.toFixed(1) + " / 5.0 (Band " + p.projected_band_1_6.toFixed(1) + ")</p>" +
-    "<p><strong>예상 상승</strong>: +" + p.expected_gain_0_5.toFixed(2) + "</p>";
+    "<p><strong>현재 예상 밴드</strong>: " + p.current_band_1_6.toFixed(1) + " / 6</p>" +
+    "<p><strong>교정 후 예상 밴드</strong>: " + p.projected_band_1_6.toFixed(1) + " / 6</p>" +
+    "<p><strong>예상 상승</strong>: +" + p.expected_gain_0_5.toFixed(2) + "점</p>";
   beforeAfterProjectionEl.appendChild(box);
 }
 
@@ -419,7 +420,7 @@ function renderScoreSimulator(items) {
     box.className = "edit-item";
     box.innerHTML =
       "<p><strong>액션</strong>: " + item.action + "</p>" +
-      "<p><strong>예상 상승(0-5)</strong>: +" + item.expected_delta_0_5 + "</p>" +
+      "<p><strong>예상 상승</strong>: +" + item.expected_delta_0_5 + "점</p>" +
       "<p><strong>예상 밴드</strong>: " + item.projected_band_1_6 + " / 6</p>";
     scoreSimulatorEl.appendChild(box);
   });

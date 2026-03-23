@@ -217,9 +217,9 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
     # Only apply prompt-fit adjustment when a real prompt was provided
     if payload.prompt_text.strip():
         if prompt_fit_data["score"] < 2.5:
-            total_score = max(0.0, total_score - 0.5)
-        elif prompt_fit_data["score"] > 4.0:
-            total_score = min(5.0, total_score + 0.5)
+            total_score = max(0.0, total_score - 0.75)
+        elif prompt_fit_data["score"] > 4.25:
+            total_score = min(5.0, total_score + 0.25)
 
     if len(payload.essay_text.split()) < 60:
         raise HTTPException(
@@ -733,14 +733,14 @@ def download_report(submission_id: int) -> FileResponse:
         f"Confidence: {result.get('confidence', 'n/a')}",
         safe(str(result.get('confidence_reason', ''))),
         "",
-        "Prompt Fit",
-        f"Score: {result.get('prompt_fit_score', 'n/a')}",
+        "Task Response Fit",
+        f"Score: {_to_band_1_6(float(result.get('prompt_fit_score', 0.0))):.1f}/6.0",
         "",
         "Dimensions",
     ]
 
     for dim in result.get("dimensions", []):
-        line = f"- {dim.get('name', '')}: {dim.get('score', '')}"
+        line = f"- {dim.get('name', '')}: {_to_band_1_6(float(dim.get('score', 0.0))):.1f}/6.0"
         lines.append(safe(line))
 
     profile = result.get("score_profile", {})
@@ -784,6 +784,7 @@ def download_report(submission_id: int) -> FileResponse:
     examiner_feedback = result.get("examiner_feedback", {})
     weakness_ranking = result.get("personal_weakness_ranking", [])
     weekly_plan = result.get("weekly_plan", [])
+    bilingual_feedback = result.get("bilingual_feedback", {})
 
     # Cover page (executive summary)
     score_text = str(result.get("score_band_1_6", "n/a"))
@@ -804,6 +805,19 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.set_font("Helvetica", size=10)
         pdf.cell(0, 5, safe(str(target_eta.get("message", ""))))
         pdf.set_y(info_y + info_h + 4)
+
+    summary_y = pdf.get_y()
+    summary_h = 24
+    pdf.set_fill_color(246, 249, 253)
+    pdf.set_draw_color(194, 208, 224)
+    pdf.rect(pdf.l_margin, summary_y, pdf.w - pdf.l_margin - pdf.r_margin, summary_h, "DF")
+    pdf.set_xy(pdf.l_margin + 3, summary_y + 2)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 4, "EXECUTIVE SUMMARY")
+    pdf.set_xy(pdf.l_margin + 3, summary_y + 7)
+    pdf.set_font("Helvetica", size=10)
+    pdf.multi_cell(0, 4.8, safe(str(bilingual_feedback.get("summary_ko", ""))))
+    pdf.set_y(summary_y + summary_h + 4)
 
     pdf.set_fill_color(239, 244, 250)
     pdf.set_draw_color(205, 214, 226)
@@ -857,8 +871,8 @@ def download_report(submission_id: int) -> FileResponse:
         lines.append(
             safe(
                 "Before/After Projection: "
-                f"{before_after_projection.get('current_band_1_6', 'n/a')} -> "
-                f"{before_after_projection.get('projected_band_1_6', 'n/a')} "
+                f"{before_after_projection.get('current_band_1_6', 'n/a')}/6.0 -> "
+                f"{before_after_projection.get('projected_band_1_6', 'n/a')}/6.0 "
                 f"(gain {before_after_projection.get('expected_gain_0_5', 0)})"
             )
         )
@@ -1147,7 +1161,7 @@ def weekly_report() -> WeeklyReportResponse:
     if avg_s >= 5.0:
         rec = f"이번 주 평균 {avg_s}점으로 훌륭합니다! 꾸준히 유지하면 6.0 달성이 가능합니다."
     elif avg_s >= 4.0:
-        rec = f"평균 {avg_s}점입니다. {most_common} 오류를 집중 교정하면 5.0+ 달성이 가능합니다."
+        rec = f"평균 {avg_s}점입니다. {most_common} 오류를 집중 교정하면 5.5~6.0 구간 진입이 가능합니다."
     else:
         rec = f"평균 {avg_s}점입니다. {most_common} 교정을 우선 연습하고 매일 1회 이상 제출해보세요."
 
