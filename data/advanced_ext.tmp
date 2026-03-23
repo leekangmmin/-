@@ -1,0 +1,191 @@
+def template_coach(prompt_type: str) -> dict:
+    if prompt_type == "integrated":
+        return {
+            "opening_templates": [
+                "The reading presents several claims, while the lecture challenges each point.",
+                "Although the passage argues X, the professor refutes this view with practical evidence.",
+            ],
+            "body_templates": [
+                "First, the article claims ____. In contrast, the lecturer explains ____.",
+                "Second, while the reading suggests ____, the speaker points out ____.",
+            ],
+            "transition_bank": ["In contrast", "However", "Moreover", "Therefore"],
+            "closing_templates": [
+                "Overall, the lecture undermines the reading by presenting stronger evidence.",
+            ],
+        }
+
+    return {
+        "opening_templates": [
+            "I agree with the statement because practical outcomes matter more than theory alone.",
+            "From my perspective, this policy should be supported for two key reasons.",
+        ],
+        "body_templates": [
+            "First, ____ because ____. For example, ____.",
+            "Second, ____ leads to ____. As a result, ____.",
+        ],
+        "transition_bank": ["First", "For example", "In addition", "Therefore", "Overall"],
+        "closing_templates": [
+            "For these reasons, I strongly support this approach.",
+        ],
+    }
+
+
+def score_highlights(essay_text: str) -> list[dict]:
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", essay_text.strip()) if s.strip()]
+    highlights: list[dict] = []
+
+    for sentence in sentences[:10]:
+        lowered = sentence.lower()
+        length = len(_tokens(sentence))
+        impact: Literal["positive", "negative", "neutral"] = "neutral"
+        reason = "Sentence is acceptable but not strongly score-driving."
+
+        if any(k in lowered for k in ["for example", "for instance", "because", "therefore"]):
+            impact = "positive"
+            reason = "Contains support logic or evidence markers that strengthen scoring."
+        if length > 35:
+            impact = "negative"
+            reason = "Likely run-on sentence; clarity and grammar control may drop."
+        elif length < 5:
+            impact = "negative"
+            reason = "Too short to develop meaning for rubric credit."
+        elif "thing" in lowered or "stuff" in lowered:
+            impact = "negative"
+            reason = "Vague wording lowers lexical precision."
+
+        highlights.append({"sentence": sentence, "impact": impact, "reason": reason})
+
+    return highlights
+
+
+def weakness_dictionary(
+    essay_text: str,
+    grammar_stats: dict[str, int],
+    historical_rows: list[dict[str, Any]],
+) -> list[dict]:
+    cards: list[dict] = []
+    lowered = essay_text.lower()
+
+    if grammar_stats.get("run_on", 0) > 0:
+        cards.append(
+            {
+                "category": "run_on",
+                "wrong_pattern": "One sentence contains too many ideas joined by commas.",
+                "fix_pattern": "Split into 2 sentences and add a clear connector.",
+                "tip": "Limit one sentence to one core claim + one support.",
+            }
+        )
+
+    if "discuss about" in lowered:
+        cards.append(
+            {
+                "category": "preposition",
+                "wrong_pattern": "discuss about",
+                "fix_pattern": "discuss",
+                "tip": "The verb discuss does not take about.",
+            }
+        )
+
+    if "a evidence" in lowered or "an information" in lowered:
+        cards.append(
+            {
+                "category": "article",
+                "wrong_pattern": "a evidence / an information",
+                "fix_pattern": "evidence / information (uncountable)",
+                "tip": "Use uncountable nouns without a/an.",
+            }
+        )
+
+    historical_issue_counter = Counter()
+    for row in historical_rows[-5:]:
+        g = row.get("grammar_stats", {})
+        for key in ["tense", "article", "preposition", "run_on", "subject_verb", "punctuation"]:
+            historical_issue_counter[key] += int(g.get(key, 0))
+
+    if historical_issue_counter:
+        top_issue, top_count = historical_issue_counter.most_common(1)[0]
+        cards.append(
+            {
+                "category": "historical_pattern",
+                "wrong_pattern": f"Frequent issue: {top_issue}",
+                "fix_pattern": f"Daily 5-sentence drill targeting {top_issue}",
+                "tip": f"This issue appeared {top_count} times in recent submissions.",
+            }
+        )
+
+    if not cards:
+        cards.append(
+            {
+                "category": "precision",
+                "wrong_pattern": "general wording",
+                "fix_pattern": "claim + evidence + implication",
+                "tip": "Make each body sentence carry a specific role.",
+            }
+        )
+
+    return cards[:5]
+
+
+def personalization_advice(rows: list[dict[str, Any]]) -> dict:
+    recent = rows[-5:]
+    if not recent:
+        return {
+            "coaching_tone": "starter",
+            "repeated_issues": ["Not enough history yet"],
+            "next_focus": "Submit 3 essays to activate personalized trend coaching.",
+        }
+
+    avg_score = sum(float(r.get("estimated_score_0_5", 0)) for r in recent) / len(recent)
+    avg_fit = sum(float(r.get("prompt_fit_score", 0)) for r in recent) / len(recent)
+
+    issue_counter = Counter()
+    for row in recent:
+        g = row.get("grammar_stats", {})
+        for k, v in g.items():
+            if k != "total":
+                issue_counter[k] += int(v)
+
+    repeated = [f"{k} ({v})" for k, v in issue_counter.most_common(3) if v > 0]
+    tone = "direct" if avg_score >= 3.5 else "supportive"
+
+    if avg_fit < 3.2:
+        next_focus = "Mirror prompt keywords in thesis and topic sentences."
+    elif repeated:
+        next_focus = f"Eliminate the top repeated issue first: {repeated[0]}."
+    else:
+        next_focus = "Increase evidence density in each body paragraph."
+
+    return {
+        "coaching_tone": tone,
+        "repeated_issues": repeated or ["No dominant repeated issue"],
+        "next_focus": next_focus,
+    }
+
+
+def pre_submit_risk(prompt_type: str, prompt_text: str, essay_text: str) -> dict:
+    metrics = analyze_essay(essay_text)
+    prompt_fit = evaluate_prompt_fit(prompt_text, essay_text)
+    grammar = grammar_error_stats(essay_text)
+
+    warnings: list[str] = []
+    if metrics.word_count < (180 if prompt_type == "integrated" else 120):
+        warnings.append("분량이 권장 범위보다 부족합니다.")
+    if prompt_fit["score"] < 3.0:
+        warnings.append("프롬프트 핵심 키워드 반영률이 낮습니다.")
+    if grammar["run_on"] > 0:
+        warnings.append("긴 문장(run-on)이 있어 감점 위험이 있습니다.")
+    if metrics.paragraph_count < 3:
+        warnings.append("문단 수가 부족해 논리 구조가 약해 보일 수 있습니다.")
+
+    risk_level: Literal["low", "medium", "high"] = "low"
+    if len(warnings) >= 3:
+        risk_level = "high"
+    elif len(warnings) >= 1:
+        risk_level = "medium"
+
+    return {
+        "risk_level": risk_level,
+        "warnings": warnings,
+        "ready": len(warnings) == 0,
+    }

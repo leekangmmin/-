@@ -1,0 +1,30 @@
+#!/bin/zsh
+set -e
+
+APP_BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$APP_BIN_DIR/../../.." && pwd)"
+PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
+APP_DIR="$PROJECT_DIR/NativeMacApp"
+APP_BIN="$APP_DIR/.build/release/ToeflNativeApp"
+
+if ! command -v swift >/dev/null 2>&1; then
+  osascript -e 'display dialog "Swift 도구체인이 필요합니다.\nXcode 또는 Command Line Tools를 설치해 주세요." buttons {"확인"} default button "확인"'
+  exit 1
+fi
+
+if [ ! -x "$PYTHON_BIN" ]; then
+  osascript -e 'display dialog "가상환경이 없거나 손상되었습니다.\n프로젝트 루트에서 .venv를 먼저 준비해 주세요." buttons {"확인"} default button "확인"'
+  exit 1
+fi
+
+if [ ! -x "$APP_BIN" ]; then
+  cd "$PROJECT_DIR"
+  if ! swift build -c release --package-path "$APP_DIR" >/tmp/toefl_native_build.log 2>&1; then
+    osascript -e 'display dialog "네이티브 앱 빌드에 실패했습니다.\n/tmp/toefl_native_build.log 를 확인해 주세요." buttons {"확인"} default button "확인"'
+    exit 1
+  fi
+fi
+
+cd "$PROJECT_DIR"
+export TOEFL_PROJECT_ROOT="$PROJECT_DIR"
+"$APP_BIN"

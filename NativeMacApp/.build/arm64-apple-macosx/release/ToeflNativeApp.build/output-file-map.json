@@ -1,0 +1,13 @@
+{
+  "": {
+    "dependencies": "/Users/igangmin/Desktop/토플 채점기/NativeMacApp/.build/arm64-apple-macosx/release/ToeflNativeApp.build/ToeflNativeApp.d",
+    "object": "/Users/igangmin/Desktop/토플 채점기/NativeMacApp/.build/arm64-apple-macosx/release/ToeflNativeApp.build/ToeflNativeApp.o",
+    "swift-dependencies": "/Users/igangmin/Desktop/토플 채점기/NativeMacApp/.build/arm64-apple-macosx/release/ToeflNativeApp.build/master.swiftdeps"
+  },
+  "/Users/igangmin/Desktop/토플 채점기/NativeMacApp/Sources/ToeflNativeApp/main.swift": {
+    "object": "/Users/igangmin/Desktop/토플 채점기/NativeMacApp/.build/arm64-apple-macosx/release/ToeflNativeApp.build/main.swift.o",
+    "swiftmodule": "/Users/igangmin/Desktop/토플 채점기/NativeMacApp/.build/arm64-apple-macosx/release/ToeflNativeApp.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/igangmin/Desktop/토플 채점기/NativeMacApp/.build/arm64-apple-macosx/release/ToeflNativeApp.build/main.swiftdeps",
+    "diagnostics": "/Users/igangmin/Desktop/토플 채점기/NativeMacApp/.build/arm64-apple-macosx/release/ToeflNativeApp.build/main.dia"
+  }
+}
