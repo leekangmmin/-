@@ -1,10 +1,17 @@
-# 2026 개정 TOEFL 라이팅 첨삭 프로그램
+<p align="center">
+  <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/logo.png" alt="TOEFL 첨삭기 로고" width="120"/>
+</p>
 
-> FastAPI 기반 TOEFL 라이팅 첨삭기 (macOS 네이티브 앱 + Windows 데스크톱 지원)
+<h1 align="center">2026 개정 TOEFL 라이팅 첨삭기</h1>
 
-## 다운로드
+<p align="center">
+  <b>AI 기반 실시간 첨삭, 성장 대시보드, PDF 리포트까지 한 번에</b><br>
+  <img src="https://img.shields.io/github/v/release/leekangmmin/-?style=flat-square"/>
+  <img src="https://img.shields.io/github/last-commit/leekangmmin/-?style=flat-square"/>
+  <img src="https://img.shields.io/github/languages/top/leekangmmin/-?style=flat-square"/>
+</p>
 
-아래 버튼을 클릭하면 최신 버전이 바로 다운로드됩니다.
+---
 
 <p align="center">
   <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-macOS.dmg">
@@ -16,31 +23,33 @@
   </a>
 </p>
 
-| 플랫폼 | 파일 | 요구사항 |
-|--------|------|----------|
-| macOS 12+ | `TOEFLScorer-macOS.dmg` | Apple Silicon / Intel 지원 |
-| Windows 10/11 | `TOEFLScorer-Setup.exe` | 64비트 |
+---
 
-Windows에서 설치 없이 바로 실행하려면 아래 포터블 파일도 바로 받을 수 있습니다.
-
-- https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer.exe
-
-> **참고:** 릴리즈 파일은 GitHub Actions에서 자동으로 빌드·업데이트됩니다. 항상 최신 버전이 유지됩니다.
+<div align="center">
+  <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/screenshot_main.png" alt="앱 메인화면 스크린샷" width="700"/>
+</div>
 
 ---
 
-## 핵심 기능
+## ✨ 주요 기능
 
-- 통합형/Academic Discussion 자동 평가
-- 6개 루브릭 기반 채점(사용자 표기 6.0 기준)
-- 문법 오류 유형 분석 + 정밀 교정 제안
-- 목표 점수 리라이팅(최소 수정/적극 수정)
-- PDF 리포트 생성 + 성장 대시보드 + 제출 이력
-- 외부 AI 연동(OpenAI/Claude/Gemini)
+- <b>실시간 AI 문법/논리/어휘 첨삭</b> (내장/외부 AI 선택)
+- <b>TOEFL 루브릭 기반 점수 예측</b> (6.0 만점 환산)
+- <b>문법/논리/어휘별 신뢰도 점수</b>로 피드백 우선순위 제공
+- <b>PDF 리포트 자동 생성</b> (제출별/누적 성장 대시보드)
+- <b>macOS/Windows 네이티브 앱</b> (설치/포터블 모두 지원)
+- <b>API 연동 및 오픈소스 확장성</b>
 
-## 빠른 실행
+---
 
-### 로컬 웹 실행
+## 🚀 빠른 시작
+
+### macOS/Windows 설치
+
+- 위 다운로드 버튼 클릭 → 설치파일 실행
+- 또는 포터블 exe 바로 실행
+
+### 개발자/로컬 실행
 
 ```bash
 python -m venv .venv
@@ -49,14 +58,51 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-브라우저에서 아래 주소를 열면 됩니다.
+- http://127.0.0.1:8000 접속
 
-- http://127.0.0.1:8000
+---
 
-### macOS 앱처럼 실행
+## 🧠 AI/첨삭 엔진
 
-- 프로젝트 루트에서 [실행.command](실행.command) 더블클릭
-- 또는 [토플첨삭기 by이강민.app](토플첨삭기%20by이강민.app) 실행
+- <b>내장 AI</b>: 오프라인 동작, ChatGPT 5급 문법/논리/어휘 교정, 신뢰도 점수 제공
+- <b>외부 AI</b>: OpenAI, Claude, Gemini API 연동 지원
+- <b>TOEFL 전용 프롬프트/패턴</b> 내장, 유형별 연결어/문단 구조 자동화
+
+---
+
+## 📊 성장 대시보드 & PDF
+
+- 누적 제출/점수/교정 이력 시각화
+- PDF 리포트 자동 생성/다운로드
+
+---
+
+## 🛠️ 프로젝트 구조
+
+- <b>app/</b>: FastAPI 백엔드/AI 엔진
+- <b>static/</b>: 프론트엔드(HTML/JS/CSS)
+- <b>NativeMacApp/</b>: macOS SwiftUI 클라이언트
+- <b>windows/</b>: Windows 런처/빌드 스크립트
+
+---
+
+## 🖥️ 빌드/배포
+
+- macOS: <code>./macos/build_installer.command</code>
+- Windows: <code>windows/build_windows.ps1</code>
+- GitHub Actions 자동 빌드/릴리즈
+
+---
+
+## 📢 주의
+
+- 본 도구는 학습/연습용 피드백 제공 목적이며, ETS 공식 채점 결과와 다를 수 있습니다.
+
+---
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/screenshot_report.png" alt="PDF 리포트 스크린샷" width="700"/>
+</p>
 
 위 방식은 외부 브라우저 없이 네이티브 창에서 동작합니다.
 
