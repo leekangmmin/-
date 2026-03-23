@@ -11,7 +11,7 @@
     <img src="https://img.shields.io/badge/macOS-다운로드-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 다운로드" height="50"/>
   </a>
   &nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/leekangmmin/-/releases/tag/latest">
+  <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-Setup.exe">
     <img src="https://img.shields.io/badge/Windows-다운로드-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 다운로드" height="50"/>
   </a>
 </p>
