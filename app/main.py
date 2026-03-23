@@ -453,8 +453,23 @@ def download_report(submission_id: int) -> FileResponse:
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"submission_{submission_id}.pdf"
 
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=12)
+    class BrandedPDF(FPDF):
+        def footer(self) -> None:
+            self.set_y(-11)
+            self.set_draw_color(214, 223, 233)
+            self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+
+            self.set_font("Helvetica", "I", 7)
+            self.set_text_color(93, 109, 126)
+            self.set_xy(self.l_margin, self.get_y() + 1.4)
+            self.cell(0, 3.6, "LKM TOEFL LAB", align="L")
+            self.set_xy(self.l_margin, self.get_y())
+            self.cell(0, 3.6, f"Page {self.page_no()}/{{nb}}", align="R")
+            self.set_text_color(0, 0, 0)
+
+    pdf = BrandedPDF()
+    pdf.alias_nb_pages()
+    pdf.set_auto_page_break(auto=True, margin=14)
     pdf.add_page()
     pdf.set_font("Helvetica", size=12)
 
@@ -482,6 +497,18 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.set_font("Helvetica", size=10)
         pdf.set_xy(left + 4, y + 11.2)
         pdf.cell(0, 5, safe(f"Submission #{submission_id}  |  {created_at}"))
+
+        # Brand chip
+        chip_w = 42
+        chip_h = 6
+        chip_x = left + width - chip_w - 3
+        chip_y = y + 2.3
+        pdf.set_fill_color(10, 63, 106)
+        pdf.rect(chip_x, chip_y, chip_w, chip_h, "F")
+        pdf.set_font("Helvetica", "B", 7)
+        pdf.set_text_color(235, 243, 251)
+        pdf.set_xy(chip_x + 1.7, chip_y + 1.5)
+        pdf.cell(chip_w - 3.4, 3, "LKM TOEFL LAB", align="C")
 
         # Score spotlight card
         card_y = y + 22
@@ -986,6 +1013,10 @@ def download_report(submission_id: int) -> FileResponse:
             pdf.set_font("Helvetica", "B", 9)
             pdf.set_text_color(66, 83, 99)
             pdf.cell(0, 4, "TOEFL WRITING COACHING REPORT")
+            pdf.set_xy(pdf.w - pdf.r_margin - 40, header_y + 1.8)
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(80, 98, 117)
+            pdf.cell(40, 4, "LKM TOEFL LAB", align="R")
             pdf.set_text_color(0, 0, 0)
             pdf.set_y(header_y + 9.5)
 
