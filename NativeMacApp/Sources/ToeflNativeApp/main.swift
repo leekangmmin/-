@@ -797,11 +797,7 @@ private struct ContentView: View {
 							.font(.system(size: 21, weight: .black, design: .monospaced))
 							.foregroundStyle(UITheme.textMain)
 
-						HStack(spacing: 10) {
-							scoreCard(title: "SCORE.1_6", value: String(format: "%.1f", result.score_band_1_6))
-							scoreCard(title: "SCORE.30", value: "\(result.estimated_score_30)")
-							scoreCard(title: "GRAMMAR.TOTAL", value: "\(result.grammar_stats.total)")
-						}
+						scoreCard(title: "TOEFL SCORE (MAX 6.0)", value: String(format: "%.1f", result.score_band_1_6))
 
 						textPanel(title: "SUMMARY.KO", body: result.bilingual_feedback.summary_ko)
 						textPanel(title: "SUMMARY.EN", body: result.bilingual_feedback.summary_en)
@@ -884,8 +880,6 @@ private struct ContentView: View {
 
 						HStack(spacing: 10) {
 							Text("1-6: \(String(format: "%.1f", item.score_band_1_6))")
-							Text("BAND: \(String(format: "%.1f", item.score_band_1_6))")
-							Text("30: \(item.estimated_score_30)")
 						}
 						.font(.system(size: 12, weight: .semibold, design: .monospaced))
 

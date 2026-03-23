@@ -3,6 +3,8 @@ name: Build Installers
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -62,3 +64,37 @@ jobs:
         with:
           name: TOEFLScorer-Windows-Setup
           path: dist_windows/installer/TOEFLScorer-Setup.exe
+
+  publish-latest-release:
+    needs: [build-macos-dmg, build-windows-setup]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: TOEFLScorer-macOS-dmg
+          path: release-assets
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: TOEFLScorer-Windows-Setup
+          path: release-assets
+
+      - name: Publish rolling latest release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: latest
+          name: Latest Build
+          body: |
+            자동 업데이트 릴리즈입니다.
+            - macOS DMG
+            - Windows Setup.exe
+          prerelease: true
+          allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          artifacts: "release-assets/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
