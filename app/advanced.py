@@ -241,6 +241,7 @@ def grammar_error_stats(essay_text: str) -> dict:
     preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered))
     preposition += len(re.findall(r"\baccording to me\b", lowered))
     preposition += len(re.findall(r"\bdespite of\b|\bbetween\s+\w+\s+to\s+\w+\b", lowered))
+    preposition += len(re.findall(r"\bdifferent with\b", lowered))
     tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
     tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
     tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
@@ -248,14 +249,16 @@ def grammar_error_stats(essay_text: str) -> dict:
     subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered))
     subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
     subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
+    subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+(have|do|were)\b", lowered))
+    subject_verb += len(re.findall(r"\bthe\s+number\s+of\s+\w+\s+are\b", lowered))
+    subject_verb += len(re.findall(r"\ba\s+number\s+of\s+\w+\s+is\b", lowered))
     subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
     subject_verb += len(re.findall(r"\b(people|students|children|they|we)\s+was\b", lowered))
     subject_verb += len(re.findall(r"\b(teacher|student|child)\s+have\b", lowered))
     subject_verb += len(re.findall(r"\b(he|she|it)\s+don't\b|\b(i|we|they)\s+doesn't\b", lowered))
     subject_verb += len(re.findall(r"\b(i|we|they|people|students)\s+(has|does|needs|makes|suggests|shows|gives|takes|helps)\b", lowered))
     subject_verb += len(re.findall(r"\b(it|this|that)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered))
-    subject_verb += len(re.findall(r"\b(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered))
-    subject_verb += len(re.findall(r"\b(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered))
+    subject_verb += len(re.findall(r"(^|[.!?]\s+)(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered))
     punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
     punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
     punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
@@ -263,6 +266,7 @@ def grammar_error_stats(essay_text: str) -> dict:
     style += len(re.findall(r"\bmore\s+better\b|\bmore\s+worse\b", lowered))
     style += len(re.findall(r"\bi\s+am\s+agree\b|\bi'm\s+agree\b", lowered))
     style += len(re.findall(r"\bif\s+i\s+was\b", lowered))
+    style += len(re.findall(r"\b(people|students|children)\s+which\b", lowered))
 
     total = run_on + article + preposition + tense + subject_verb + punctuation + style
     return {
@@ -397,28 +401,16 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("subject_verb", m_neutral_subject.group(0), fixed, "it/this/that은 단수 주어이므로 단수 동사 형태가 필요합니다.", "high")
 
         lowered = current_lowered()
-        m_singular_noun = re.search(r"\b(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered)
+        m_singular_noun = re.search(r"^(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered)
         if m_singular_noun:
             fixed = re.sub(
-                r"\b(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b",
+                r"^(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b",
                 lambda match: f"{match.group(1)} {match.group(2)} {_to_third_person_singular(match.group(3)) if match.group(3).lower() not in {'are', 'were'} else ('is' if match.group(3).lower() == 'are' else 'was')}",
                 working_sentence,
                 count=1,
                 flags=re.IGNORECASE,
             )
             apply_fix("subject_verb", m_singular_noun.group(0), fixed, "단수 명사 주어 뒤에는 3인칭 단수 동사 형태가 와야 합니다.", "high")
-
-        lowered = current_lowered()
-        m_bare_singular_noun = re.search(r"\b(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered)
-        if m_bare_singular_noun:
-            fixed = re.sub(
-                r"\b(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b",
-                lambda match: f"{match.group(1)} {_to_third_person_singular(match.group(2)) if match.group(2).lower() not in {'are', 'were'} else ('is' if match.group(2).lower() == 'are' else 'was')}",
-                working_sentence,
-                count=1,
-                flags=re.IGNORECASE,
-            )
-            apply_fix("subject_verb", m_bare_singular_noun.group(0), fixed, "단수 명사가 주어로 쓰였으면 단수 동사 형태를 맞춰야 합니다.", "high")
 
         lowered = current_lowered()
         m_num = re.search(r"\b(many|several|few)\s+(student|reason|problem|example|factor|benefit)\b", lowered)
@@ -543,6 +535,12 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("preposition", m_prep5.group(0), fixed, "despite는 of 없이 쓰고, between은 and와 짝을 맞춰야 합니다.", "medium")
 
         lowered = current_lowered()
+        m_prep6 = re.search(r"\bdifferent with\b", lowered)
+        if m_prep6:
+            fixed = re.sub(r"\bdifferent with\b", "different from", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("preposition", m_prep6.group(0), fixed, "different는 보통 from과 결합하는 것이 표준적입니다.", "low")
+
+        lowered = current_lowered()
         m_there = re.search(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered)
         if m_there:
             fixed = re.sub(r"\bthere\s+is\b", lambda match: _match_case(match.group(0), "there are"), working_sentence, count=1, flags=re.IGNORECASE)
@@ -553,6 +551,39 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
         if m_oneof:
             fixed = re.sub(r"\bare\b", "is", working_sentence, count=1, flags=re.IGNORECASE)
             apply_fix("subject_verb", m_oneof.group(0), fixed, "one of + 복수명사는 문장 주어가 one(단수)이므로 동사 is가 맞습니다.", "high")
+
+        lowered = current_lowered()
+        m_oneof2 = re.search(r"\bone of\s+the\s+\w+\s+(have|do|were)\b", lowered)
+        if m_oneof2:
+            fixed = re.sub(
+                r"\bone of\s+the\s+(\w+)\s+have\b",
+                lambda m: f"one of the {m.group(1)} has",
+                working_sentence,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            fixed = re.sub(
+                r"\bone of\s+the\s+(\w+)\s+do\b",
+                lambda m: f"one of the {m.group(1)} does",
+                fixed,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            fixed = re.sub(
+                r"\bone of\s+the\s+(\w+)\s+were\b",
+                lambda m: f"one of the {m.group(1)} was",
+                fixed,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            apply_fix("subject_verb", m_oneof2.group(0), fixed, "one of 구문은 단수 주어로 취급되어 has/does/was가 자연스럽습니다.", "high")
+
+        lowered = current_lowered()
+        m_number = re.search(r"\bthe\s+number\s+of\s+\w+\s+are\b|\ba\s+number\s+of\s+\w+\s+is\b", lowered)
+        if m_number:
+            fixed = re.sub(r"\bthe\s+number\s+of\s+(\w+)\s+are\b", lambda m: f"the number of {m.group(1)} is", working_sentence, count=1, flags=re.IGNORECASE)
+            fixed = re.sub(r"\ba\s+number\s+of\s+(\w+)\s+is\b", lambda m: f"a number of {m.group(1)} are", fixed, count=1, flags=re.IGNORECASE)
+            apply_fix("subject_verb", m_number.group(0), fixed, "the number of는 단수, a number of는 복수 동사와 함께 쓰는 것이 자연스럽습니다.", "medium")
 
         lowered = current_lowered()
         m_children = re.search(r"\b(people|children)\s+has\b", lowered)
@@ -598,6 +629,12 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
         if m_if_i_was:
             fixed = re.sub(r"\bif\s+i\s+was\b", "if I were", working_sentence, count=1, flags=re.IGNORECASE)
             apply_fix("style", m_if_i_was.group(0), fixed, "가정법 맥락에서는 If I was보다 If I were가 더 표준적입니다.", "low")
+
+        lowered = current_lowered()
+        m_rel = re.search(r"\b(people|students|children)\s+which\b", lowered)
+        if m_rel:
+            fixed = re.sub(r"\b(people|students|children)\s+which\b", lambda m: f"{m.group(1)} who", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("style", m_rel.group(0), fixed, "사람을 수식하는 관계대명사는 which보다 who가 자연스럽습니다.", "low")
 
         lowered = current_lowered()
         m_comp = re.search(r"\bmore\s+better\b|\bmore\s+worse\b", lowered)

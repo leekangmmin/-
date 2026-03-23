@@ -529,17 +529,6 @@ def download_report(submission_id: int) -> FileResponse:
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"submission_{submission_id}.pdf"
 
-    def _pick_unicode_font_path() -> Path | None:
-        candidates = [
-            Path("/System/Library/Fonts/Supplemental/AppleGothic.ttf"),
-            Path("/System/Library/Fonts/Supplemental/AppleMyungjo.ttf"),
-            Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
-        ]
-        for path in candidates:
-            if path.exists():
-                return path
-        return None
-
     class BrandedPDF(FPDF):
         def footer(self) -> None:
             self.set_y(-11)
@@ -558,16 +547,23 @@ def download_report(submission_id: int) -> FileResponse:
     pdf.alias_nb_pages()
     pdf.set_auto_page_break(auto=True, margin=14)
 
-    unicode_font_path = _pick_unicode_font_path()
     unicode_font_enabled = False
     report_font_name = "Helvetica"
-    if unicode_font_path is not None:
+    unicode_candidates = [
+        Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+        Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),
+        Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+    ]
+    for unicode_font_path in unicode_candidates:
+        if not unicode_font_path.exists():
+            continue
         try:
             pdf.add_font("ReportUnicode", fname=str(unicode_font_path))
             report_font_name = "ReportUnicode"
             unicode_font_enabled = True
+            break
         except Exception:
-            unicode_font_enabled = False
+            continue
 
     def set_report_font(style: Literal["", "B", "I", "U"] = "", size: int = 12) -> None:
         if unicode_font_enabled:
