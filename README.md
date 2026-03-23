@@ -1,3 +1,4 @@
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/logo.png" alt="TOEFL 첨삭기 로고" width="120"/>
 </p>
@@ -5,21 +6,19 @@
 <h1 align="center">2026 개정 TOEFL 라이팅 첨삭기</h1>
 
 <p align="center">
-  <b>AI 기반 실시간 첨삭, 성장 대시보드, PDF 리포트까지 한 번에</b><br>
+  <b>AI 실시간 첨삭, 성장 대시보드, PDF 리포트까지 한 번에</b><br>
   <img src="https://img.shields.io/github/v/release/leekangmmin/-?style=flat-square"/>
   <img src="https://img.shields.io/github/last-commit/leekangmmin/-?style=flat-square"/>
   <img src="https://img.shields.io/github/languages/top/leekangmmin/-?style=flat-square"/>
 </p>
 
----
-
 <p align="center">
-  <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-macOS.dmg">
-    <img src="https://img.shields.io/badge/macOS-다운로드-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 다운로드" height="50"/>
+  <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-macOS.dmg" style="text-decoration:none;">
+    <img src="https://img.shields.io/badge/macOS-앱%20다운로드-000000?style=for-the-badge&logo=apple&logoColor=white&labelColor=000000" alt="macOS 앱 다운로드" width="320"/>
   </a>
   &nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-Setup.exe">
-    <img src="https://img.shields.io/badge/Windows-다운로드-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 다운로드" height="50"/>
+  <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-Setup.exe" style="text-decoration:none;">
+    <img src="https://img.shields.io/badge/Windows-앱%20다운로드-0078D4?style=for-the-badge&logo=windows&logoColor=white&labelColor=0078D4" alt="Windows 앱 다운로드" width="320"/>
   </a>
 </p>
 
@@ -31,23 +30,25 @@
 
 ---
 
-## ✨ 주요 기능
 
-- <b>실시간 AI 문법/논리/어휘 첨삭</b> (내장/외부 AI 선택)
-- <b>TOEFL 루브릭 기반 점수 예측</b> (6.0 만점 환산)
-- <b>문법/논리/어휘별 신뢰도 점수</b>로 피드백 우선순위 제공
-- <b>PDF 리포트 자동 생성</b> (제출별/누적 성장 대시보드)
-- <b>macOS/Windows 네이티브 앱</b> (설치/포터블 모두 지원)
-- <b>API 연동 및 오픈소스 확장성</b>
+## 주요 기능
+
+- **AI 실시간 문법/논리/어휘 첨삭** (내장/외부 AI)
+- **TOEFL 루브릭 기반 점수 예측** (6.0 만점 환산)
+- **문법/논리/어휘별 신뢰도 점수**로 피드백 우선순위 제공
+- **PDF 리포트 자동 생성** (제출별/누적 성장 대시보드)
+- **macOS/Windows 네이티브 앱** (설치/포터블 모두 지원)
+- **API 연동 및 오픈소스 확장성**
 
 ---
 
-## 🚀 빠른 시작
 
-### macOS/Windows 설치
+## 빠른 시작
 
 - 위 다운로드 버튼 클릭 → 설치파일 실행
 - 또는 포터블 exe 바로 실행
+- macOS: 앱 실행 시 별도 Python/가상환경 필요 없음
+- Windows: 설치파일 또는 포터블 exe 실행
 
 ### 개발자/로컬 실행
 
@@ -62,39 +63,30 @@ uvicorn app.main:app --reload
 
 ---
 
-## 🧠 AI/첨삭 엔진
-
-- <b>내장 AI</b>: 오프라인 동작, ChatGPT 5급 문법/논리/어휘 교정, 신뢰도 점수 제공
-- <b>외부 AI</b>: OpenAI, Claude, Gemini API 연동 지원
-- <b>TOEFL 전용 프롬프트/패턴</b> 내장, 유형별 연결어/문단 구조 자동화
 
 ---
 
-## 📊 성장 대시보드 & PDF
 
-- 누적 제출/점수/교정 이력 시각화
-- PDF 리포트 자동 생성/다운로드
+## 프로젝트 구조
 
----
-
-## 🛠️ 프로젝트 구조
-
-- <b>app/</b>: FastAPI 백엔드/AI 엔진
-- <b>static/</b>: 프론트엔드(HTML/JS/CSS)
-- <b>NativeMacApp/</b>: macOS SwiftUI 클라이언트
-- <b>windows/</b>: Windows 런처/빌드 스크립트
+- **app/**: FastAPI 백엔드/AI 엔진
+- **static/**: 프론트엔드(HTML/JS/CSS)
+- **NativeMacApp/**: macOS SwiftUI 클라이언트
+- **windows/**: Windows 런처/빌드 스크립트
 
 ---
 
-## 🖥️ 빌드/배포
 
-- macOS: <code>./macos/build_installer.command</code>
-- Windows: <code>windows/build_windows.ps1</code>
+## 빌드/배포
+
+- macOS: `./macos/build_standalone_server.command` → 앱 실행
+- Windows: `windows/build_windows.ps1` → exe 실행
 - GitHub Actions 자동 빌드/릴리즈
 
 ---
 
-## 📢 주의
+
+## 주의
 
 - 본 도구는 학습/연습용 피드백 제공 목적이며, ETS 공식 채점 결과와 다를 수 있습니다.
 

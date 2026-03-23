@@ -115,7 +115,7 @@ def main() -> int:
         min_size=(1000, 700),
         text_select=True,
     )
-    webview.start(gui="cocoa", debug=False)
+    webview.start(debug=False)
     return 0
 
 
