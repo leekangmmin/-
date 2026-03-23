@@ -529,6 +529,17 @@ def download_report(submission_id: int) -> FileResponse:
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"submission_{submission_id}.pdf"
 
+    def _pick_unicode_font_path() -> Path | None:
+        candidates = [
+            Path("/System/Library/Fonts/Supplemental/AppleGothic.ttf"),
+            Path("/System/Library/Fonts/Supplemental/AppleMyungjo.ttf"),
+            Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+        ]
+        for path in candidates:
+            if path.exists():
+                return path
+        return None
+
     class BrandedPDF(FPDF):
         def footer(self) -> None:
             self.set_y(-11)
@@ -546,16 +557,36 @@ def download_report(submission_id: int) -> FileResponse:
     pdf = BrandedPDF()
     pdf.alias_nb_pages()
     pdf.set_auto_page_break(auto=True, margin=14)
+
+    unicode_font_path = _pick_unicode_font_path()
+    unicode_font_enabled = False
+    report_font_name = "Helvetica"
+    if unicode_font_path is not None:
+        try:
+            pdf.add_font("ReportUnicode", fname=str(unicode_font_path))
+            report_font_name = "ReportUnicode"
+            unicode_font_enabled = True
+        except Exception:
+            unicode_font_enabled = False
+
+    def set_report_font(style: Literal["", "B", "I", "U"] = "", size: int = 12) -> None:
+        if unicode_font_enabled:
+            pdf.set_font(report_font_name, size=size)
+            return
+        pdf.set_font("Helvetica", style=style, size=size)
+
     pdf.add_page()
-    pdf.set_font("Helvetica", size=12)
+    set_report_font(size=12)
 
     def safe(text: str) -> str:
+        if unicode_font_enabled:
+            return text
         return text.encode("ascii", errors="ignore").decode("ascii")
 
     def chart_title(text: str) -> None:
-        pdf.set_font("Helvetica", "B", 12)
+        set_report_font("B", 12)
         pdf.cell(0, 8, safe(text), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", size=11)
+        set_report_font(size=11)
 
     def draw_cover_header(submission_id: int, created_at: str, score_text: str) -> None:
         left = pdf.l_margin
@@ -567,12 +598,12 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.rect(left, y, width, 18, "F")
         pdf.set_text_color(255, 255, 255)
         pdf.set_xy(left + 4, y + 4.2)
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 6, "TOEFL Writing Coaching Report")
+        set_report_font("B", 16)
+        pdf.cell(0, 6, "TOEFL Writing Assessment Report")
 
-        pdf.set_font("Helvetica", size=10)
+        set_report_font(size=10)
         pdf.set_xy(left + 4, y + 11.2)
-        pdf.cell(0, 5, safe(f"Submission #{submission_id}  |  {created_at}"))
+        pdf.cell(0, 5, safe(f"Submission #{submission_id}  |  {created_at}  |  For Educational Use"))
 
         # Brand chip
         chip_w = 42
@@ -581,7 +612,7 @@ def download_report(submission_id: int) -> FileResponse:
         chip_y = y + 2.3
         pdf.set_fill_color(10, 63, 106)
         pdf.rect(chip_x, chip_y, chip_w, chip_h, "F")
-        pdf.set_font("Helvetica", "B", 7)
+        set_report_font("B", 7)
         pdf.set_text_color(235, 243, 251)
         pdf.set_xy(chip_x + 1.7, chip_y + 1.5)
         pdf.cell(chip_w - 3.4, 3, "LKM TOEFL LAB", align="C")
@@ -593,10 +624,10 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.set_draw_color(18, 86, 136)
         pdf.rect(left, card_y, width, card_h, "DF")
         pdf.set_text_color(18, 86, 136)
-        pdf.set_font("Helvetica", "B", 11)
+        set_report_font("B", 11)
         pdf.set_xy(left + 4, card_y + 4)
-        pdf.cell(0, 5, "TOEFL SCORE (MAX 6.0)")
-        pdf.set_font("Helvetica", "B", 22)
+        pdf.cell(0, 5, "Estimated TOEFL Writing Band (1-6)")
+        set_report_font("B", 22)
         pdf.set_xy(left + 4, card_y + 8.2)
         pdf.cell(0, 8, score_text)
 
@@ -621,11 +652,11 @@ def download_report(submission_id: int) -> FileResponse:
             pdf.set_fill_color(246, 248, 251)
             pdf.set_draw_color(208, 216, 226)
             pdf.rect(x, y, box_w, 14, "DF")
-            pdf.set_font("Helvetica", "B", 8)
+            set_report_font("B", 8)
             pdf.set_text_color(86, 101, 115)
             pdf.set_xy(x + 2.5, y + 2.2)
             pdf.cell(box_w - 5, 3.6, label)
-            pdf.set_font("Helvetica", "B", 12)
+            set_report_font("B", 12)
             pdf.set_text_color(32, 42, 52)
             pdf.set_xy(x + 2.5, y + 6.6)
             pdf.cell(box_w - 5, 5.2, safe(value))
@@ -699,14 +730,14 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.cell(bar_w, 3, "risk zone: low / medium / high")
 
         # axis labels
-        pdf.set_font("Helvetica", size=8)
+        set_report_font(size=8)
         for tick in [0, max(1, max_val // 2), max_val]:
             tx = left + label_w + 2 + (bar_w * tick / max_val)
             pdf.set_xy(tx - 3, y - 2)
             pdf.cell(8, 4, str(tick))
         pdf.set_xy(left + label_w + 2 + bar_w + 4, y - 2)
         pdf.cell(10, 4, "count")
-        pdf.set_font("Helvetica", size=11)
+        set_report_font(size=11)
 
         for label, value in rows:
             pdf.set_xy(left, y)
@@ -753,7 +784,7 @@ def download_report(submission_id: int) -> FileResponse:
         # legend for risk zones
         lx = left + width - 54
         ly = top + 2
-        pdf.set_font("Helvetica", size=8)
+        set_report_font(size=8)
         pdf.set_fill_color(220, 252, 231)
         pdf.rect(lx, ly, 3.8, 2.5, "F")
         pdf.set_xy(lx + 5, ly - 1)
@@ -768,14 +799,14 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.cell(14, 4, "low")
 
         # y-axis labels (1 to 6)
-        pdf.set_font("Helvetica", size=8)
+        set_report_font(size=8)
         for tick in [1, 3, 5, 6]:
             ty = top + height - ((tick - 1) / 5.0) * height
             pdf.set_draw_color(232, 236, 243)
             pdf.line(left, ty, left + width, ty)
             pdf.set_xy(left - 8, ty - 2)
             pdf.cell(7, 4, str(tick))
-        pdf.set_font("Helvetica", size=11)
+        set_report_font(size=11)
 
         min_v = min(points)
         max_v = max(points)
@@ -793,13 +824,13 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.set_xy(left, top + height + 1)
         pdf.cell(width, 6, f"Latest submission: #{submission_id} | trend window: {len(points)}")
         pdf.set_xy(left, top + height + 5)
-        pdf.set_font("Helvetica", size=8)
+        set_report_font(size=8)
         pdf.cell(width, 4, "x-axis: attempt order (old -> recent), y-axis: band(1-6)")
-        pdf.set_font("Helvetica", size=11)
+        set_report_font(size=11)
         pdf.set_y(top + height + 8)
 
     lines = [
-        "TOEFL Writing Evaluation Report",
+        "TOEFL Writing Assessment Report",
         f"Submission ID: {submission_id}",
         f"Created At: {record['created_at']}",
         f"Prompt Type: {record['prompt_type']}",
@@ -878,7 +909,7 @@ def download_report(submission_id: int) -> FileResponse:
         info_h = 10
         pdf.rect(pdf.l_margin, info_y, pdf.w - pdf.l_margin - pdf.r_margin, info_h, "DF")
         pdf.set_xy(pdf.l_margin + 3, info_y + 2.4)
-        pdf.set_font("Helvetica", size=10)
+        set_report_font(size=10)
         pdf.cell(0, 5, safe(str(target_eta.get("message", ""))))
         pdf.set_y(info_y + info_h + 4)
 
@@ -888,11 +919,14 @@ def download_report(submission_id: int) -> FileResponse:
     pdf.set_draw_color(194, 208, 224)
     pdf.rect(pdf.l_margin, summary_y, pdf.w - pdf.l_margin - pdf.r_margin, summary_h, "DF")
     pdf.set_xy(pdf.l_margin + 3, summary_y + 2)
-    pdf.set_font("Helvetica", "B", 11)
+    set_report_font("B", 11)
     pdf.cell(0, 4, "EXECUTIVE SUMMARY")
     pdf.set_xy(pdf.l_margin + 3, summary_y + 7)
-    pdf.set_font("Helvetica", size=10)
-    pdf.multi_cell(0, 4.8, safe(str(bilingual_feedback.get("summary_ko", ""))))
+    set_report_font(size=10)
+    summary_text = str(bilingual_feedback.get("summary_en", "")).strip()
+    if not summary_text:
+        summary_text = "Thank you for your submission. This report provides a respectful, detailed review of your current writing level and practical next steps for improvement."
+    pdf.multi_cell(0, 4.8, safe(summary_text))
     pdf.set_y(summary_y + summary_h + 4)
 
     pdf.set_fill_color(239, 244, 250)
@@ -901,11 +935,11 @@ def download_report(submission_id: int) -> FileResponse:
     sec_h = 8
     pdf.rect(pdf.l_margin, sec_y, pdf.w - pdf.l_margin - pdf.r_margin, sec_h, "DF")
     pdf.set_xy(pdf.l_margin + 3, sec_y + 2)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 4, "TOP PRIORITY ACTIONS")
+    set_report_font("B", 11)
+    pdf.cell(0, 4, "RECOMMENDED PRIORITY ACTIONS")
     pdf.set_y(sec_y + sec_h + 3)
 
-    pdf.set_font("Helvetica", size=11)
+    set_report_font(size=11)
     for item in top_priority_actions[:3]:
         block_y = pdf.get_y()
         block_h = 12
@@ -913,10 +947,10 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.set_draw_color(220, 228, 238)
         pdf.rect(pdf.l_margin, block_y, pdf.w - pdf.l_margin - pdf.r_margin, block_h, "DF")
         pdf.set_xy(pdf.l_margin + 3, block_y + 2)
-        pdf.set_font("Helvetica", "B", 10)
+        set_report_font("B", 10)
         pdf.cell(0, 4, safe(str(item.get("title", ""))))
         pdf.set_xy(pdf.l_margin + 3, block_y + 6.2)
-        pdf.set_font("Helvetica", size=9)
+        set_report_font(size=9)
         pdf.cell(0, 4, safe(f"Impact {item.get('impact', '')}  |  Confidence {item.get('confidence', 'medium')}"))
         pdf.set_y(block_y + block_h + 2)
 
@@ -925,16 +959,16 @@ def download_report(submission_id: int) -> FileResponse:
     sec2_y = pdf.get_y()
     pdf.rect(pdf.l_margin, sec2_y, pdf.w - pdf.l_margin - pdf.r_margin, sec_h, "DF")
     pdf.set_xy(pdf.l_margin + 3, sec2_y + 2)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 4, "SENTENCE VARIETY SUMMARY")
+    set_report_font("B", 11)
+    pdf.cell(0, 4, "SENTENCE VARIETY OVERVIEW")
     pdf.set_y(sec2_y + sec_h + 3)
 
-    pdf.set_font("Helvetica", size=11)
+    set_report_font(size=11)
     pdf.cell(0, 7, safe(f"Short: {sentence_variety.get('short_ratio', 0)} | Medium: {sentence_variety.get('medium_ratio', 0)} | Long: {sentence_variety.get('long_ratio', 0)}"), new_x="LMARGIN", new_y="NEXT")
     pdf.multi_cell(0, 6, safe(str(sentence_variety.get("recommendation", ""))))
 
     pdf.add_page()
-    pdf.set_font("Helvetica", size=12)
+    set_report_font(size=12)
 
     draw_dimension_chart(result.get("dimensions", []))
     draw_grammar_chart(result.get("grammar_stats", {}))
@@ -1068,6 +1102,12 @@ def download_report(submission_id: int) -> FileResponse:
     for day in weekly_plan[:7]:
         lines.append(safe(f"- {day}"))
 
+    lines.extend([
+        "",
+        "Closing Note",
+        "Thank you for your effort. Please use this report as a structured guide, and revise step by step with patience and consistency.",
+    ])
+
     section_titles = {
         "Quick Visual Summary",
         "Strengths",
@@ -1089,6 +1129,7 @@ def download_report(submission_id: int) -> FileResponse:
         "Repetition Training",
         "Examiner Mode Comments",
         "Weekly Plan",
+        "Closing Note",
     }
 
     def ensure_space(height: float) -> None:
@@ -1100,11 +1141,11 @@ def download_report(submission_id: int) -> FileResponse:
             pdf.set_draw_color(208, 216, 226)
             pdf.rect(pdf.l_margin, header_y, pdf.w - pdf.l_margin - pdf.r_margin, 7, "DF")
             pdf.set_xy(pdf.l_margin + 2.5, header_y + 1.8)
-            pdf.set_font("Helvetica", "B", 9)
+            set_report_font("B", 9)
             pdf.set_text_color(66, 83, 99)
             pdf.cell(0, 4, "TOEFL WRITING COACHING REPORT")
             pdf.set_xy(pdf.w - pdf.r_margin - 40, header_y + 1.8)
-            pdf.set_font("Helvetica", "B", 8)
+            set_report_font("B", 8)
             pdf.set_text_color(80, 98, 117)
             pdf.cell(40, 4, "LKM TOEFL LAB", align="R")
             pdf.set_text_color(0, 0, 0)
@@ -1117,7 +1158,7 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.set_draw_color(176, 197, 220)
         pdf.rect(pdf.l_margin, y, pdf.w - pdf.l_margin - pdf.r_margin, 7.4, "DF")
         pdf.set_xy(pdf.l_margin + 2.8, y + 1.8)
-        pdf.set_font("Helvetica", "B", 10)
+        set_report_font("B", 10)
         pdf.set_text_color(35, 74, 112)
         pdf.cell(0, 4, safe(title.upper()))
         pdf.set_text_color(0, 0, 0)
@@ -1137,7 +1178,7 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.rect(pdf.l_margin, y, 1.6, h, "F")
 
         pdf.set_xy(pdf.l_margin + 3.2, y + 1.5)
-        pdf.set_font("Helvetica", size=9)
+        set_report_font(size=9)
         for idx, chunk in enumerate(wrapped):
             prefix = "• " if idx == 0 else "  "
             pdf.cell(0, 3.6, safe(prefix + chunk), new_x="LMARGIN", new_y="NEXT")
@@ -1150,7 +1191,7 @@ def download_report(submission_id: int) -> FileResponse:
 
         if line == "Strengths":
             pdf.add_page()
-            pdf.set_font("Helvetica", size=12)
+            set_report_font(size=12)
 
         if not line:
             ensure_space(3.5)
@@ -1167,7 +1208,7 @@ def download_report(submission_id: int) -> FileResponse:
 
         wrapped = textwrap.wrap(line, width=95, break_long_words=True)
         ensure_space(max(6.0, 4.3 * len(wrapped)))
-        pdf.set_font("Helvetica", size=10)
+        set_report_font(size=10)
         for chunk in wrapped:
             pdf.cell(0, 4.6, safe(chunk), new_x="LMARGIN", new_y="NEXT")
 

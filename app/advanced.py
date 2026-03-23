@@ -142,6 +142,28 @@ def _to_base_form(verb: str) -> str:
     return verb
 
 
+def _starts_with_vowel_sound(word: str) -> bool:
+    lowered = word.lower()
+    if lowered.startswith(("uni", "use", "user", "euro", "one", "once", "ufo", "uk", "us")):
+        return False
+    if lowered.startswith(("hour", "honest", "honor", "heir")):
+        return True
+    return bool(re.match(r"^[aeiou]", lowered))
+
+
+def _count_article_mismatch(text: str) -> int:
+    count = 0
+    for m in re.finditer(r"\b(a|an)\s+([A-Za-z][A-Za-z'\-]*)", text, flags=re.IGNORECASE):
+        article = m.group(1).lower()
+        word = m.group(2)
+        vowel_sound = _starts_with_vowel_sound(word)
+        if article == "a" and vowel_sound:
+            count += 1
+        elif article == "an" and not vowel_sound:
+            count += 1
+    return count
+
+
 def evaluate_prompt_fit(prompt_text: str, essay_text: str) -> dict:
     pkeys = _keywords(prompt_text, top_n=10)
     essay_words = set(_tokens(essay_text))
@@ -210,14 +232,15 @@ def grammar_error_stats(essay_text: str) -> dict:
 
     run_on = sum(len(_tokens(s)) > 32 for s in sentences)
     run_on += sum(bool(re.search(r",\s+(i|we|they|he|she|it)\s+\w+", s.lower())) for s in sentences)
-    article = len(re.findall(r"\b(a|an)\s+[aeiou]\w+", lowered))
-    article += len(re.findall(r"\b(an)\s+[^aeiou\W]\w+", lowered))
+    article = _count_article_mismatch(essay_text)
     article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence|homework|luggage)\b", lowered))
     article += len(re.findall(r"\bmany\s+information\b|\bfewer\s+peoples\b", lowered))
     article += len(re.findall(r"\bfrom\s+internet\b", lowered))
 
     preposition = len(re.findall(r"\bdiscuss(?:es)? about\b|\bmentions? about\b", lowered))
     preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered))
+    preposition += len(re.findall(r"\baccording to me\b", lowered))
+    preposition += len(re.findall(r"\bdespite of\b|\bbetween\s+\w+\s+to\s+\w+\b", lowered))
     tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
     tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
     tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
@@ -226,7 +249,9 @@ def grammar_error_stats(essay_text: str) -> dict:
     subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
     subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
     subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
+    subject_verb += len(re.findall(r"\b(people|students|children|they|we)\s+was\b", lowered))
     subject_verb += len(re.findall(r"\b(teacher|student|child)\s+have\b", lowered))
+    subject_verb += len(re.findall(r"\b(he|she|it)\s+don't\b|\b(i|we|they)\s+doesn't\b", lowered))
     subject_verb += len(re.findall(r"\b(i|we|they|people|students)\s+(has|does|needs|makes|suggests|shows|gives|takes|helps)\b", lowered))
     subject_verb += len(re.findall(r"\b(it|this|that)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered))
     subject_verb += len(re.findall(r"\b(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered))
@@ -237,6 +262,7 @@ def grammar_error_stats(essay_text: str) -> dict:
     style = len(re.findall(r"\b(could|should|would)\s+of\b", lowered))
     style += len(re.findall(r"\bmore\s+better\b|\bmore\s+worse\b", lowered))
     style += len(re.findall(r"\bi\s+am\s+agree\b|\bi'm\s+agree\b", lowered))
+    style += len(re.findall(r"\bif\s+i\s+was\b", lowered))
 
     total = run_on + article + preposition + tense + subject_verb + punctuation + style
     return {
@@ -426,15 +452,33 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("style", m_i_agree.group(0), fixed, "agree는 보통 be동사 없이 동사로 직접 써서 I agree라고 표현합니다.", "high")
 
         lowered = current_lowered()
-        m_art1 = re.search(r"\ba\s+[aeiou]\w+", lowered)
+        m_art1 = None
+        for cand in re.finditer(r"\ba\s+([A-Za-z][A-Za-z'\-]*)", working_sentence, flags=re.IGNORECASE):
+            if _starts_with_vowel_sound(cand.group(1)):
+                m_art1 = cand
+                break
         if m_art1:
-            fixed = re.sub(r"\ba\s+([aeiou]\w*)", r"an \1", working_sentence, count=1, flags=re.IGNORECASE)
+            word = m_art1.group(1)
+            fixed = (
+                working_sentence[: m_art1.start()]
+                + _match_case(m_art1.group(0), f"an {word}")
+                + working_sentence[m_art1.end() :]
+            )
             apply_fix("article", m_art1.group(0), fixed, "모음 소리로 시작하는 단어 앞에서는 a보다 an이 자연스럽습니다.", "medium")
 
         lowered = current_lowered()
-        m_art2 = re.search(r"\ban\s+[^aeiou\W]\w+", lowered)
+        m_art2 = None
+        for cand in re.finditer(r"\ban\s+([A-Za-z][A-Za-z'\-]*)", working_sentence, flags=re.IGNORECASE):
+            if not _starts_with_vowel_sound(cand.group(1)):
+                m_art2 = cand
+                break
         if m_art2:
-            fixed = re.sub(r"\ban\s+([^aeiou\W]\w*)", r"a \1", working_sentence, count=1, flags=re.IGNORECASE)
+            word = m_art2.group(1)
+            fixed = (
+                working_sentence[: m_art2.start()]
+                + _match_case(m_art2.group(0), f"a {word}")
+                + working_sentence[m_art2.end() :]
+            )
             apply_fix("article", m_art2.group(0), fixed, "자음 소리로 시작하는 단어 앞에서는 an보다 a가 자연스럽습니다.", "medium")
 
         lowered = current_lowered()
@@ -480,6 +524,25 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("preposition", m_prep3.group(0), fixed, "전치사 결합 오류입니다. depend on, interested in, discuss(about/on 없이)를 사용하세요.", "high")
 
         lowered = current_lowered()
+        m_prep4 = re.search(r"\baccording to me\b", lowered)
+        if m_prep4:
+            fixed = re.sub(r"\baccording to me\b", "in my opinion", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("preposition", m_prep4.group(0), fixed, "자기 의견에는 according to me보다 in my opinion이 더 자연스럽습니다.", "medium")
+
+        lowered = current_lowered()
+        m_prep5 = re.search(r"\bdespite of\b|\bbetween\s+\w+\s+to\s+\w+\b", lowered)
+        if m_prep5:
+            fixed = re.sub(r"\bdespite of\b", "despite", working_sentence, flags=re.IGNORECASE)
+            fixed = re.sub(
+                r"\bbetween\s+(\w+)\s+to\s+(\w+)\b",
+                lambda m: f"between {m.group(1)} and {m.group(2)}",
+                fixed,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            apply_fix("preposition", m_prep5.group(0), fixed, "despite는 of 없이 쓰고, between은 and와 짝을 맞춰야 합니다.", "medium")
+
+        lowered = current_lowered()
         m_there = re.search(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered)
         if m_there:
             fixed = re.sub(r"\bthere\s+is\b", lambda match: _match_case(match.group(0), "there are"), working_sentence, count=1, flags=re.IGNORECASE)
@@ -498,10 +561,29 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("subject_verb", m_children.group(0), fixed, "people/children은 복수 취급하므로 has 대신 have를 사용합니다.", "high")
 
         lowered = current_lowered()
+        m_plural_was = re.search(r"\b(people|students|children|they|we)\s+was\b", lowered)
+        if m_plural_was:
+            fixed = re.sub(
+                r"\b(people|students|children|they|we)\s+was\b",
+                lambda m: f"{m.group(1)} were",
+                working_sentence,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            apply_fix("subject_verb", m_plural_was.group(0), fixed, "복수 주어에는 과거형 be동사로 were를 사용합니다.", "high")
+
+        lowered = current_lowered()
         m_sv2 = re.search(r"\b(teacher|student|child)\s+have\b", lowered)
         if m_sv2:
             fixed = re.sub(r"\bhave\b", "has", working_sentence, count=1, flags=re.IGNORECASE)
             apply_fix("subject_verb", m_sv2.group(0), fixed, "단수 주어(teacher/student/child)에는 have 대신 has를 씁니다.", "high")
+
+        lowered = current_lowered()
+        m_dont = re.search(r"\b(he|she|it)\s+don't\b|\b(i|we|they)\s+doesn't\b", lowered)
+        if m_dont:
+            fixed = re.sub(r"\b(he|she|it)\s+don't\b", lambda m: f"{m.group(1)} doesn't", working_sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"\b(i|we|they)\s+doesn't\b", lambda m: f"{m.group(1)} don't", fixed, flags=re.IGNORECASE)
+            apply_fix("subject_verb", m_dont.group(0), fixed, "don't/doesn't 수일치를 주어에 맞게 조정해야 합니다.", "high")
 
         lowered = current_lowered()
         m_of = re.search(r"\b(could|should|would)\s+of\b", lowered)
@@ -510,6 +592,12 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             fixed = re.sub(r"\bshould\s+of\b", "should have", fixed, flags=re.IGNORECASE)
             fixed = re.sub(r"\bwould\s+of\b", "would have", fixed, flags=re.IGNORECASE)
             apply_fix("style", m_of.group(0), fixed, "구어체 표기(could/should/would of)는 문어체에서 could/should/would have가 정확합니다.", "medium")
+
+        lowered = current_lowered()
+        m_if_i_was = re.search(r"\bif\s+i\s+was\b", lowered)
+        if m_if_i_was:
+            fixed = re.sub(r"\bif\s+i\s+was\b", "if I were", working_sentence, count=1, flags=re.IGNORECASE)
+            apply_fix("style", m_if_i_was.group(0), fixed, "가정법 맥락에서는 If I was보다 If I were가 더 표준적입니다.", "low")
 
         lowered = current_lowered()
         m_comp = re.search(r"\bmore\s+better\b|\bmore\s+worse\b", lowered)
