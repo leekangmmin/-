@@ -2,12 +2,17 @@ $ErrorActionPreference = "Stop"
 
 Set-Location -Path (Join-Path $PSScriptRoot "..")
 
-if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
-    throw "Python launcher 'py'를 찾을 수 없습니다. Windows에서 Python 설치 후 다시 시도하세요."
+$pythonCmd = $null
+if (Get-Command py -ErrorAction SilentlyContinue) {
+  $pythonCmd = "py"
+} elseif (Get-Command python -ErrorAction SilentlyContinue) {
+  $pythonCmd = "python"
+} else {
+  throw "Python 실행 파일을 찾지 못했습니다. Python 설치 후 다시 시도하세요."
 }
 
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
-    py -m venv .venv
+  & $pythonCmd -m venv .venv
 }
 
 & .\.venv\Scripts\python.exe -m pip install --upgrade pip
