@@ -5,7 +5,7 @@ from pathlib import Path
 import textwrap
 from typing import Literal, cast
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,7 +26,6 @@ from app.advanced import (
     build_target_eta,
     build_target_band_strategy,
     build_sentence_variety,
-    build_weekly_plan,
     build_repetition_training,
     build_examiner_feedback,
     confidence_reason,
@@ -128,8 +127,8 @@ def _band_profile(score_band_1_6: float) -> dict[str, str]:
 
 def _ai_public_config() -> AIConfigResponse:
     runtime = ai_runtime_config()
-    provider_raw = str(runtime.get("provider", "openai")).strip().lower() or "openai"
-    provider = cast(Literal["openai", "claude", "gemini"], provider_raw if provider_raw in {"openai", "claude", "gemini"} else "openai")
+    provider_raw = str(runtime.get("provider", "local")).strip().lower() or "local"
+    provider = cast(Literal["local", "openai", "claude", "gemini"], provider_raw if provider_raw in {"local", "openai", "claude", "gemini"} else "local")
     enabled = bool(runtime.get("enabled"))
     openai_model = str(runtime.get("openai_model", "gpt-4.1-mini"))
     anthropic_model = str(runtime.get("anthropic_model", "claude-3-5-sonnet-latest"))
@@ -206,7 +205,7 @@ def save_ai_config(payload: AIConfigRequest) -> AIConfigResponse:
 def test_ai_connection() -> dict[str, str | bool]:
     cfg = ai_runtime_config()
     if not ai_enabled(cfg):
-        return {"ok": False, "message": "AI 연결이 비활성화되어 있거나 API 키가 없습니다."}
+        return {"ok": False, "message": "AI 연결이 비활성화되어 있습니다."}
 
     sample = "Students is often tired and they needs clearer feedback to improve writing quality."
     result = ai_enhance(
@@ -263,9 +262,7 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
     metrics = analyze_essay(payload.essay_text)
     simulator_data = build_score_simulator(total_score, grammar_stats_data, metrics.evidence_hits)
     simulator_obj = [ScoreSimulatorItem(**item) for item in simulator_data]
-    weekly_plan_data = build_weekly_plan(feedback["weaknesses"])
     weakness_ranking_data = personal_weakness_ranking(historical_rows, limit=10)
-    weekly_plan_data = build_weekly_plan(feedback["weaknesses"], weakness_ranking_data)
     grammar_impact_data = build_grammar_impact(grammar_stats_data)
     projection_data = build_before_after_projection(total_score, grammar_stats_data)
     target_strategy_data = build_target_band_strategy(target_score_0_5, total_score)
@@ -317,7 +314,7 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         )
         if ai_payload:
             ai_mode = "ai"
-            ai_provider = cast(Literal["none", "openai", "claude", "gemini"], str(runtime_ai.get("provider", "openai")))
+            ai_provider = cast(Literal["none", "local", "openai", "claude", "gemini"], str(runtime_ai.get("provider", "local")))
             paraphrase_data = ai_payload.get("paraphrase_recommendations", paraphrase_data) or paraphrase_data
             drills_data = ai_payload.get("grammar_drills", drills_data) or drills_data
             drills_obj = [GrammarDrill(**item) for item in drills_data]
@@ -407,7 +404,6 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         ],
         examiner_feedback=ExaminerFeedback(**examiner_feedback_data),
         personal_weakness_ranking=weakness_ranking_data,
-        weekly_plan=weekly_plan_data,
         strengths=feedback["strengths"],
         weaknesses=feedback["weaknesses"],
         action_plan=feedback["action_plan"],
@@ -454,7 +450,6 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         "repetition_training": [item.model_dump() for item in result.repetition_training],
         "examiner_feedback": result.examiner_feedback.model_dump(),
         "personal_weakness_ranking": result.personal_weakness_ranking,
-        "weekly_plan": result.weekly_plan,
         "weakness_dictionary": [card.model_dump() for card in result.weakness_dictionary],
     }
 
@@ -500,7 +495,10 @@ def history(limit: int = 20) -> SubmissionHistoryResponse:
 
 
 @app.get("/api/dashboard", response_model=DashboardResponse)
-def dashboard(limit: int = 200) -> DashboardResponse:
+def dashboard(request: Request, limit: int = 200) -> DashboardResponse:
+    host = (request.client.host if request.client else "")
+    if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        raise HTTPException(status_code=403, detail="Dashboard is available only from local app session")
     rows = list_all_results(limit=max(1, min(limit, 1000)))
     payload = build_dashboard(rows)
     return DashboardResponse(
@@ -886,7 +884,6 @@ def download_report(submission_id: int) -> FileResponse:
     repetition_training = result.get("repetition_training", [])
     examiner_feedback = result.get("examiner_feedback", {})
     weakness_ranking = result.get("personal_weakness_ranking", [])
-    weekly_plan = result.get("weekly_plan", [])
     bilingual_feedback = result.get("bilingual_feedback", {})
 
     # Cover page (executive summary)
@@ -1094,10 +1091,6 @@ def download_report(submission_id: int) -> FileResponse:
     for line in examiner_feedback.get("comments", [])[:5]:
         lines.append(safe(f"- {line}"))
 
-    lines.extend(["", "Weekly Plan"])
-    for day in weekly_plan[:7]:
-        lines.append(safe(f"- {day}"))
-
     lines.extend([
         "",
         "Closing Note",
@@ -1124,7 +1117,6 @@ def download_report(submission_id: int) -> FileResponse:
         "Target Band Strategy",
         "Repetition Training",
         "Examiner Mode Comments",
-        "Weekly Plan",
         "Closing Note",
     }
 

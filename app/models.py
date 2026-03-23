@@ -215,7 +215,7 @@ class EvaluationResult(BaseModel):
     score_band_1_6: float
     score_profile: ScoreBandProfile
     ai_mode: Literal["local", "ai"]
-    ai_provider: Literal["none", "openai", "claude", "gemini"]
+    ai_provider: Literal["none", "local", "openai", "claude", "gemini"]
     grammar_cap_applied: bool
     grammar_cap_reason: str
     confidence: Literal["low", "medium", "high"]
@@ -248,7 +248,6 @@ class EvaluationResult(BaseModel):
     repetition_training: list[RepetitionTrainingItem]
     examiner_feedback: ExaminerFeedback
     personal_weakness_ranking: list[str]
-    weekly_plan: list[str]
     strengths: list[str]
     weaknesses: list[str]
     action_plan: list[str]
@@ -357,7 +356,7 @@ class CompareResponse(BaseModel):
 
 
 class AIConfigRequest(BaseModel):
-    provider: Literal["openai", "claude", "gemini"]
+    provider: Literal["local", "openai", "claude", "gemini"]
     enabled: bool = False
     openai_api_key: str | None = None
     openai_model: str | None = None
@@ -368,7 +367,7 @@ class AIConfigRequest(BaseModel):
 
 
 class AIConfigResponse(BaseModel):
-    provider: Literal["openai", "claude", "gemini"]
+    provider: Literal["local", "openai", "claude", "gemini"]
     enabled: bool
     openai_model: str
     anthropic_model: str

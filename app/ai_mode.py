@@ -27,7 +27,7 @@ def _read_cfg(key: str, fallback: str = "") -> str:
 
 
 def ai_runtime_config() -> dict[str, Any]:
-    provider = _read_cfg("ai_provider", "openai") or "openai"
+    provider = _read_cfg("ai_provider", "local") or "local"
     enabled = (_read_cfg("ai_enabled", "0") == "1")
 
     openai_key = _read_cfg("openai_api_key", "")
@@ -55,6 +55,8 @@ def ai_enabled(cfg: dict[str, Any] | None = None) -> bool:
     if not bool(c.get("enabled")):
         return False
     provider = str(c.get("provider", "openai"))
+    if provider == "local":
+        return True
     if provider == "claude":
         return bool(str(c.get("anthropic_api_key", "")).strip())
     if provider == "gemini":
@@ -215,7 +217,18 @@ def ai_enhance(
     }
 
     try:
-        provider = str(runtime.get("provider", "openai"))
+        provider = str(runtime.get("provider", "local"))
+        if provider == "local":
+            paragraph = sample_paragraph_fallback.strip()
+            if not paragraph:
+                paragraph = " ".join([s.strip() for s in re.split(r"(?<=[.!?])\s+", essay_text.strip()) if s.strip()][:2])
+            if paragraph and not paragraph.endswith((".", "!", "?")):
+                paragraph += "."
+            return {
+                "paraphrase_recommendations": paraphrase_fallback[:8],
+                "grammar_drills": grammar_drills_fallback[:6],
+                "upgraded_sample_paragraph": paragraph or sample_paragraph_fallback,
+            }
         if provider == "claude":
             return _anthropic_enhance(runtime, user_prompt)
         if provider == "gemini":

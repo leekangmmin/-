@@ -71,7 +71,7 @@
     <section class="card config-card">
       <details>
         <summary>
-          <span>AI 연결 설정 (ChatGPT / Claude / Gemini)</span>
+          <span>AI 설정 (내장 AI / ChatGPT / Claude / Gemini)</span>
           <span class="muted small">필요할 때만 펼치기</span>
         </summary>
         <div class="config-body">
@@ -82,6 +82,7 @@
           <div class="ai-config-grid">
             <label class="inline-label">공급자
               <select id="aiProviderSelect">
+                <option value="local">내장 AI (오프라인 기본)</option>
                 <option value="openai">ChatGPT (OpenAI)</option>
                 <option value="claude">Claude (Anthropic)</option>
                 <option value="gemini">Gemini (Google)</option>
@@ -327,11 +328,6 @@
       <article class="card detail-card">
         <h2>개인 약점 랭킹(최근 10회)</h2>
         <ul id="weaknessRanking" class="list"></ul>
-      </article>
-
-      <article class="card wide secondary-card">
-        <h2>주간 학습 계획</h2>
-        <ul id="weeklyPlan" class="list"></ul>
       </article>
 
       <article class="card detail-card">

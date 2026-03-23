@@ -69,7 +69,6 @@ const repetitionTrainingEl = document.getElementById("repetitionTraining");
 const examinerFeedbackEl   = document.getElementById("examinerFeedback");
 const boosterListEl       = document.getElementById("boosterList");
 const weaknessRankingEl   = document.getElementById("weaknessRanking");
-const weeklyPlanEl        = document.getElementById("weeklyPlan");
 const sampleOverlapEl     = document.getElementById("sampleOverlap");
 const sampleMatchedEl     = document.getElementById("sampleMatched");
 const sampleMissingEl     = document.getElementById("sampleMissing");
@@ -184,6 +183,7 @@ async function copyTextSafe(text, label) {
 }
 
 function providerLabel(provider) {
+  if (provider === "local") return "내장 AI";
   if (provider === "claude") return "Claude";
   if (provider === "gemini") return "Gemini";
   return "ChatGPT";
@@ -916,7 +916,6 @@ async function evaluateEssay(isExamMode) {
     renderExaminerFeedback(result.examiner_feedback || null);
     renderList(weaknessRankingEl, result.personal_weakness_ranking || []);
     renderBoosterList(result);
-    renderList(weeklyPlanEl, result.weekly_plan);
     renderScoreHighlights(result.score_highlights);
     renderClaimMap(result.claim_evidence_map);
 
