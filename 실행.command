@@ -1,5 +1,12 @@
+
 #!/bin/zsh
 set -e
+
+# Gatekeeper 격리 해제 및 실행 권한 자동 부여
+xattr -dr com.apple.quarantine "$0" 2>/dev/null
+chmod +x "$0" 2>/dev/null
+xattr -dr com.apple.quarantine "./토플첨삭기 by이강민.app" 2>/dev/null
+chmod -R +x "./토플첨삭기 by이강민.app/Contents/MacOS/" 2>/dev/null
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_RUN="$PROJECT_DIR/토플첨삭기 by이강민.app/Contents/MacOS/run"
