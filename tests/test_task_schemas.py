@@ -68,7 +68,11 @@ class TestProviderUsesTaskSpecificPrompts:
         def handler(request: httpx.Request) -> httpx.Response:
             body = json.loads(request.content)
             captured["system"] = body["system"]
-            return httpx.Response(200, json={"content": [{"type": "text", "text": json.dumps({"dimensions": [], "overall_draft_score": 0})}]})
+            body_out = {
+                "dimensions": [{"dimension_id": "position", "score": 3.0, "max_score": 5.0, "explanation": "ok", "evidence": []}],
+                "overall_draft_score": 3.0,
+            }
+            return httpx.Response(200, json={"content": [{"type": "text", "text": json.dumps(body_out)}]})
 
         client = httpx.Client(transport=httpx.MockTransport(handler))
         provider = ClaudeScoringProvider(cfg, client=client)

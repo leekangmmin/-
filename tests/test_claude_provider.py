@@ -130,6 +130,62 @@ class TestCallClaude:
             call_claude(cfg, "system", {}, stage="test", client=client, sleep_fn=lambda s: None)
         assert exc_info.value.reason_code in {"call_failed_after_retries", "timeout"}
 
+    def test_truncated_json_response_fails_with_reason_code(self, cfg):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"content": [{"type": "text", "text": '{"dimensions": [{"dimension_id":'}]})
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        with pytest.raises(ProviderCallError) as exc_info:
+            call_claude(cfg, "system", {}, stage="test", client=client, sleep_fn=lambda s: None)
+        assert exc_info.value.reason_code in {"call_failed_after_retries", "timeout"}
+
+    def test_429_retries_with_backoff_then_succeeds(self, cfg):
+        attempts = {"n": 0}
+        sleeps: list[float] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts["n"] += 1
+            if attempts["n"] < 2:
+                return httpx.Response(429, json={"error": "rate_limited"})
+            return httpx.Response(200, json=_claude_message_response({"ok": True}))
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        result = call_claude(cfg, "system", {}, stage="test", client=client, sleep_fn=sleeps.append)
+        assert result == {"ok": True}
+        assert attempts["n"] == 2
+        assert sleeps  # 429는 백오프 후 재시도한다
+
+    def test_429_exhausted_retries_fails_with_reason_code(self, cfg):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, json={"error": "rate_limited"})
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        with pytest.raises(ProviderCallError) as exc_info:
+            call_claude(cfg, "system", {}, stage="test", client=client, sleep_fn=lambda s: None)
+        assert exc_info.value.reason_code == "call_failed_after_retries"
+
+    def test_500_exhausted_retries_fails_with_reason_code(self, cfg):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, json={"error": "server_error"})
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        with pytest.raises(ProviderCallError) as exc_info:
+            call_claude(cfg, "system", {}, stage="test", client=client, sleep_fn=lambda s: None)
+        assert exc_info.value.reason_code == "call_failed_after_retries"
+
+    def test_403_raises_auth_failed_without_exhausting_retries(self, cfg):
+        call_count = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            call_count["n"] += 1
+            return httpx.Response(403, json={"error": "forbidden"})
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        with pytest.raises(ProviderCallError) as exc_info:
+            call_claude(cfg, "system", {}, stage="test", client=client, sleep_fn=lambda s: None)
+        assert exc_info.value.reason_code == "auth_failed"
+        assert call_count["n"] == 1
+
 
 class TestNoContentInLogs:
     def test_essay_text_not_in_log_records(self, cfg, caplog):
@@ -175,7 +231,7 @@ class TestClaudeProviderPipeline:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_claude_message_response({
                 "dimensions": [{
-                    "dimension_id": "content", "score": 4.0, "max_score": 5.0,
+                    "dimension_id": "reasoning", "score": 4.0, "max_score": 5.0,
                     "explanation": "clear claim",
                     "evidence": [
                         {"start": 0, "end": first_sentence_end, "text": SAMPLE_ESSAY[:first_sentence_end], "explanation": "thesis"},
@@ -204,7 +260,7 @@ class TestClaudeProviderPipeline:
                 "requirements": [], "main_claims": [], "off_topic_risk": False, "template_risk": False,
             },
             "score_dimensions": {
-                "dimensions": [{"dimension_id": "content", "score": 3.5, "max_score": 5.0, "explanation": "ok", "evidence": []}],
+                "dimensions": [{"dimension_id": "reasoning", "score": 3.5, "max_score": 5.0, "explanation": "ok", "evidence": []}],
                 "overall_draft_score": 3.5,
             },
             "critique_assessment": {"flagged_dimension_ids": [], "issues": [], "severity": "none"},
@@ -227,6 +283,88 @@ class TestClaudeProviderPipeline:
         assert call_log == ["analyze_input", "score_dimensions", "critique_assessment", "generate_feedback"]
         assert result.schema_valid is True
         assert 0.0 <= result.final_score_0_5 <= 5.0
+
+
+class TestScoreDimensionsSchemaValidation:
+    """score_dimensions 응답이 스키마를 어길 때 실패 유형이 구분되는지 검증한다
+    (마스터 스펙 6장: schema_validation_failed / score_out_of_range / unsupported_task_type)."""
+
+    def test_missing_dimensions_field_raises_schema_validation_failed(self, cfg):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=_claude_message_response({"overall_draft_score": 3.0}))
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        provider = ClaudeScoringProvider(cfg, client=client)
+        from app.scoring_provider import InputAnalysis
+
+        with pytest.raises(ProviderCallError) as exc_info:
+            provider.score_dimensions(ScoringInput(SAMPLE_ESSAY, "", "academic_discussion"), InputAnalysis())
+        assert exc_info.value.reason_code == "schema_validation_failed"
+
+    def test_unknown_dimension_id_raises_schema_validation_failed(self, cfg):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=_claude_message_response({
+                "dimensions": [{"dimension_id": "made_up_dimension", "score": 3.0, "max_score": 5.0,
+                                 "explanation": "x", "evidence": []}],
+                "overall_draft_score": 3.0,
+            }))
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        provider = ClaudeScoringProvider(cfg, client=client)
+        from app.scoring_provider import InputAnalysis
+
+        with pytest.raises(ProviderCallError) as exc_info:
+            provider.score_dimensions(ScoringInput(SAMPLE_ESSAY, "", "academic_discussion"), InputAnalysis())
+        assert exc_info.value.reason_code == "schema_validation_failed"
+
+    def test_score_above_max_raises_score_out_of_range(self, cfg):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=_claude_message_response({
+                "dimensions": [{"dimension_id": "position", "score": 9.9, "max_score": 5.0,
+                                 "explanation": "x", "evidence": []}],
+                "overall_draft_score": 9.9,
+            }))
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        provider = ClaudeScoringProvider(cfg, client=client)
+        from app.scoring_provider import InputAnalysis
+
+        with pytest.raises(ProviderCallError) as exc_info:
+            provider.score_dimensions(ScoringInput(SAMPLE_ESSAY, "", "academic_discussion"), InputAnalysis())
+        assert exc_info.value.reason_code == "score_out_of_range"
+
+    def test_negative_score_raises_score_out_of_range(self, cfg):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=_claude_message_response({
+                "dimensions": [{"dimension_id": "position", "score": -1.0, "max_score": 5.0,
+                                 "explanation": "x", "evidence": []}],
+                "overall_draft_score": 0.0,
+            }))
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        provider = ClaudeScoringProvider(cfg, client=client)
+        from app.scoring_provider import InputAnalysis
+
+        with pytest.raises(ProviderCallError) as exc_info:
+            provider.score_dimensions(ScoringInput(SAMPLE_ESSAY, "", "academic_discussion"), InputAnalysis())
+        assert exc_info.value.reason_code == "score_out_of_range"
+
+    def test_malformed_evidence_offsets_raise_schema_validation_failed(self, cfg):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=_claude_message_response({
+                "dimensions": [{"dimension_id": "position", "score": 3.0, "max_score": 5.0,
+                                 "explanation": "x",
+                                 "evidence": [{"start": "not-an-int", "end": 5, "text": "x", "explanation": "y"}]}],
+                "overall_draft_score": 3.0,
+            }))
+
+        client = httpx.Client(transport=_mock_transport(handler))
+        provider = ClaudeScoringProvider(cfg, client=client)
+        from app.scoring_provider import InputAnalysis
+
+        with pytest.raises(ProviderCallError) as exc_info:
+            provider.score_dimensions(ScoringInput(SAMPLE_ESSAY, "", "academic_discussion"), InputAnalysis())
+        assert exc_info.value.reason_code == "schema_validation_failed"
 
 
 class TestShadowConfigAndAvailability:

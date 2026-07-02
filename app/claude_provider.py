@@ -39,7 +39,11 @@ from app.scoring_provider import (
     ScoringProvider,
 )
 from app.shadow_config import ShadowConfig
-from app.task_schemas import dimension_scoring_instructions, requirement_extraction_instructions
+from app.task_schemas import (
+    dimension_ids_for,
+    dimension_scoring_instructions,
+    requirement_extraction_instructions,
+)
 
 logger = logging.getLogger("toefl.shadow.claude")
 
@@ -62,6 +66,50 @@ class ProviderCallError(Exception):
         self.request_id = request_id
         self.detail = detail
         super().__init__(f"{reason_code} (request_id={request_id}): {detail}")
+
+
+def _validate_dimension_schema(data: dict[str, Any], task_type: str, request_id: str) -> None:
+    """score_dimensions 응답이 최소 스키마 요건을 만족하는지 코드에서 검증한다.
+
+    LLM이 필드를 채우지 못했다고 조용히 기본값으로 넘어가면 schema_validation_failed와
+    score_out_of_range 같은 실패 유형을 측정할 수 없다 — 실패를 관찰 가능하게
+    유지하기 위해 여기서 명시적으로 검사하고 실패 시 ProviderCallError를 던진다.
+    """
+    try:
+        known_dims: set[str] | None = set(dimension_ids_for(task_type))
+    except ValueError:
+        # email/academic_discussion 외 task_type(예: build_a_sentence)은 아직 고정된
+        # 차원 목록이 없다 — dimension_id 화이트리스트 검사는 건너뛰고 나머지
+        # 스키마 요건(score 범위, evidence 타입)만 검증한다.
+        known_dims = None
+
+    dims = data.get("dimensions")
+    if not isinstance(dims, list) or not dims:
+        raise ProviderCallError("schema_validation_failed", request_id, "dimensions missing or empty")
+
+    for d in dims:
+        if not isinstance(d, dict):
+            raise ProviderCallError("schema_validation_failed", request_id, "dimension entry not an object")
+        dim_id = d.get("dimension_id")
+        if not isinstance(dim_id, str) or not dim_id:
+            raise ProviderCallError("schema_validation_failed", request_id, f"invalid dimension_id: {dim_id!r}")
+        if known_dims is not None and dim_id not in known_dims:
+            raise ProviderCallError(
+                "schema_validation_failed", request_id, f"unknown dimension_id: {dim_id!r}"
+            )
+        score = d.get("score")
+        max_score = d.get("max_score", 5.0)
+        if not isinstance(score, (int, float)) or not isinstance(max_score, (int, float)):
+            raise ProviderCallError("schema_validation_failed", request_id, "score/max_score not numeric")
+        if score < 0 or score > max_score:
+            raise ProviderCallError(
+                "score_out_of_range", request_id, f"{dim_id}: score={score} max_score={max_score}"
+            )
+        for e in d.get("evidence", []) or []:
+            if not isinstance(e, dict):
+                raise ProviderCallError("schema_validation_failed", request_id, "evidence entry not an object")
+            if not isinstance(e.get("start"), int) or not isinstance(e.get("end"), int):
+                raise ProviderCallError("schema_validation_failed", request_id, "evidence start/end not int")
 
 
 # 참고용 대략적 단가(USD, 1M 토큰당). Anthropic 공개 가격 변경 시 갱신 필요 —
@@ -293,6 +341,7 @@ class ClaudeScoringProvider(ScoringProvider):
             "requirement_analysis": [r.requirement for r in analysis.requirements],
         }
         data = call_claude(self.cfg, system, payload, stage="score_dimensions", client=self._client, usage_sink=self.last_usage)
+        _validate_dimension_schema(data, scoring_input.task_type, request_id=str(uuid.uuid4()))
         dims = []
         for d in data.get("dimensions", []):
             if not isinstance(d, dict):
