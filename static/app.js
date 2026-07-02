@@ -1,5 +1,9 @@
 /* ── Element refs ───────────────────────────────────────────────────── */
 const essayTextEl         = document.getElementById("essayText");
+const promptTextEl        = document.getElementById("promptText");
+const engineBadgeEl       = document.getElementById("engineBadge");
+const engineInfoEl        = document.getElementById("engineInfo");
+const grammarCapChipEl    = document.getElementById("grammarCapChip");
 const targetScoreEl       = document.getElementById("targetScore");
 const timerMinutesEl      = document.getElementById("timerMinutes");
 const startTimerBtn       = document.getElementById("startTimerBtn");
@@ -111,6 +115,7 @@ let lastResult = null;
 
 /* ── Draft helpers ───────────────────────────────────────────────────── */
 const DRAFT_KEY = "toefl_draft_text";
+const PROMPT_DRAFT_KEY = "toefl_prompt_draft_text";
 const PROMPT_LIBRARY_KEY = "toefl_prompt_library";
 
 function sentenceCount(text) {
@@ -130,43 +135,52 @@ function updateLiveStats() {
 }
 
 function saveDraft() {
-  localStorage.setItem(DRAFT_KEY, essayTextEl.value);
-  setText(draftStatusEl, "자동저장 완료");
+  try {
+    localStorage.setItem(DRAFT_KEY, essayTextEl.value);
+    if (promptTextEl) localStorage.setItem(PROMPT_DRAFT_KEY, promptTextEl.value);
+    setText(draftStatusEl, "자동저장 완료");
+  } catch (_) {
+    setText(draftStatusEl, "자동저장 실패");
+  }
 }
 
 function loadDraft() {
   const draft = localStorage.getItem(DRAFT_KEY);
+  const promptDraft = localStorage.getItem(PROMPT_DRAFT_KEY);
+  if (promptTextEl && promptDraft) promptTextEl.value = promptDraft;
   if (!draft) return;
   essayTextEl.value = draft;
   setText(draftStatusEl, "자동저장 불러옴");
 }
 
 function savePromptLibrary() {
-  const text = essayTextEl.value.trim();
+  const promptText = promptTextEl ? promptTextEl.value.trim() : "";
+  const text = promptText || essayTextEl.value.trim();
   if (!text) {
-    statusText.textContent = "저장할 프롬프트/답안 텍스트가 없습니다.";
+    statusText.textContent = "저장할 문제 지문이 없습니다.";
     return;
   }
   const current = JSON.parse(localStorage.getItem(PROMPT_LIBRARY_KEY) || "[]");
   const item = { text: text, createdAt: new Date().toISOString() };
   const next = [item].concat(current).slice(0, 20);
   localStorage.setItem(PROMPT_LIBRARY_KEY, JSON.stringify(next));
-  statusText.textContent = "프롬프트 라이브러리에 저장했습니다.";
+  statusText.textContent = "문제 지문을 저장했습니다.";
 }
 
 function loadPromptLibrary() {
   const items = JSON.parse(localStorage.getItem(PROMPT_LIBRARY_KEY) || "[]");
   if (!items.length) {
-    statusText.textContent = "저장된 프롬프트가 없습니다.";
+    statusText.textContent = "저장된 문제 지문이 없습니다.";
     return;
   }
   const pick = items[0];
-  essayTextEl.value = String(pick.text || "");
-  updateDetectBadge(essayTextEl.value);
-  updateLiveStats();
+  if (promptTextEl) {
+    promptTextEl.value = String(pick.text || "");
+    const details = promptTextEl.closest("details");
+    if (details) details.open = true;
+  }
   saveDraft();
-  essayTextEl.focus();
-  statusText.textContent = "최근 저장 프롬프트를 불러왔습니다.";
+  statusText.textContent = "최근 저장한 문제 지문을 불러왔습니다.";
 }
 
 async function copyTextSafe(text, label) {
@@ -294,10 +308,10 @@ function updateDetectBadge(essay) {
   const type = detectType(essay);
   if (type === "email") {
     detectBadgeEl.className = "detect-badge detect-email";
-    detectBadgeEl.textContent = "✉️  Task 2 — 이메일 감지됨";
+    detectBadgeEl.textContent = "✉️ 이메일 (Write an Email)";
   } else {
     detectBadgeEl.className = "detect-badge detect-disc";
-    detectBadgeEl.textContent = "💬  Task 3 — 학술 토론 감지됨";
+    detectBadgeEl.textContent = "💬 학술 토론 (Academic Discussion)";
   }
   return type;
 }
@@ -308,6 +322,10 @@ essayTextEl.addEventListener("input", function() {
   saveDraft();
 });
 
+if (promptTextEl) {
+  promptTextEl.addEventListener("input", saveDraft);
+}
+
 essayTextEl.addEventListener("keydown", function(ev) {
   if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") {
     ev.preventDefault();
@@ -317,6 +335,18 @@ essayTextEl.addEventListener("keydown", function(ev) {
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 function setText(el, val) { if (el) el.textContent = val != null ? val : "-"; }
+
+/* 사용자 답안 등 신뢰할 수 없는 텍스트는 innerHTML 삽입 전 반드시 이스케이프한다 */
+function esc(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+const SEVERITY_SAFE = { high: "high", medium: "medium", low: "low" };
+function safeSeverity(value) { return SEVERITY_SAFE[value] || "medium"; }
 
 function renderList(target, items) {
   target.innerHTML = "";
@@ -335,7 +365,7 @@ function renderDimensionBars(dimensions) {
     const row = document.createElement("div");
     row.className = "rubric-row";
     row.innerHTML =
-      '<span class="rubric-name">' + d.name + '</span>' +
+      '<span class="rubric-name">' + esc(d.name) + '</span>' +
       '<div class="rubric-track"><div class="rubric-fill" style="width:0%" data-pct="' + pct + '"></div></div>' +
       '<span class="rubric-val">' + band.toFixed(1) + ' / 6</span>';
     dimensionBarsEl.appendChild(row);
@@ -358,9 +388,9 @@ function renderSentenceEdits(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>원문</strong>: " + item.original + "</p>" +
-      "<p><strong>개선</strong>: " + item.improved + "</p>" +
-      "<p><strong>포인트</strong>: " + item.note + "</p>";
+      "<p><strong>원문</strong>: " + esc(item.original) + "</p>" +
+      "<p><strong>개선</strong>: " + esc(item.improved) + "</p>" +
+      "<p><strong>포인트</strong>: " + esc(item.note) + "</p>";
     sentenceEditsEl.appendChild(box);
   });
 }
@@ -385,8 +415,8 @@ function renderClaimMap(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      '<p><span class="tag tag-' + item.tag + '">' + item.tag + '</span>' + item.sentence + '</p>' +
-      "<p><strong>설명</strong>: " + item.note + "</p>";
+      '<p><span class="tag tag-' + esc(item.tag) + '">' + esc(item.tag) + '</span>' + esc(item.sentence) + '</p>' +
+      "<p><strong>설명</strong>: " + esc(item.note) + "</p>";
     claimMapEl.appendChild(box);
   });
 }
@@ -397,8 +427,8 @@ function renderScoreHighlights(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      '<p><span class="tag tag-' + item.impact + '">' + item.impact + '</span>' + item.sentence + '</p>' +
-      "<p><strong>근거</strong>: " + item.reason + "</p>";
+      '<p><span class="tag tag-' + esc(item.impact) + '">' + esc(item.impact) + '</span>' + esc(item.sentence) + '</p>' +
+      "<p><strong>근거</strong>: " + esc(item.reason) + "</p>";
     scoreHighlightsEl.appendChild(box);
   });
 }
@@ -409,10 +439,10 @@ function renderWeaknessDictionary(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>분류</strong>: " + item.category + "</p>" +
-      "<p><strong>잘못된 패턴</strong>: " + item.wrong_pattern + "</p>" +
-      "<p><strong>교정 패턴</strong>: " + item.fix_pattern + "</p>" +
-      "<p><strong>팁</strong>: " + item.tip + "</p>";
+      "<p><strong>분류</strong>: " + esc(item.category) + "</p>" +
+      "<p><strong>잘못된 패턴</strong>: " + esc(item.wrong_pattern) + "</p>" +
+      "<p><strong>교정 패턴</strong>: " + esc(item.fix_pattern) + "</p>" +
+      "<p><strong>팁</strong>: " + esc(item.tip) + "</p>";
     weaknessDictionaryEl.appendChild(box);
   });
 }
@@ -423,9 +453,9 @@ function renderParaphraseSuggestions(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>원표현</strong>: " + item.original + "</p>" +
-      "<p><strong>추천표현</strong>: " + item.improved + "</p>" +
-      "<p><strong>이유</strong>: " + item.reason + "</p>";
+      "<p><strong>원표현</strong>: " + esc(item.original) + "</p>" +
+      "<p><strong>추천표현</strong>: " + esc(item.improved) + "</p>" +
+      "<p><strong>이유</strong>: " + esc(item.reason) + "</p>";
     paraphraseSuggestionsEl.appendChild(box);
   });
 }
@@ -438,7 +468,7 @@ function renderChecklist(checklist) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>항목</strong>: " + item.label + "</p>" +
+      "<p><strong>항목</strong>: " + esc(item.label) + "</p>" +
       "<p><strong>점수</strong>: " + item.score + "</p>" +
       "<p><strong>상태</strong>: " + (item.status === "good" ? "양호" : "주의") + "</p>";
     checklistItemsEl.appendChild(box);
@@ -451,10 +481,10 @@ function renderGrammarDrills(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>이슈</strong>: " + item.issue + "</p>" +
-      "<p><strong>오답</strong>: " + item.wrong + "</p>" +
-      "<p><strong>정답</strong>: " + item.correct + "</p>" +
-      "<p><strong>팁</strong>: " + item.tip + "</p>";
+      "<p><strong>이슈</strong>: " + esc(item.issue) + "</p>" +
+      "<p><strong>오답</strong>: " + esc(item.wrong) + "</p>" +
+      "<p><strong>정답</strong>: " + esc(item.correct) + "</p>" +
+      "<p><strong>팁</strong>: " + esc(item.tip) + "</p>";
     grammarDrillsEl.appendChild(box);
   });
 }
@@ -471,13 +501,13 @@ function renderGrammarCorrections(items) {
 
   items.forEach(function(item, idx) {
     const box = document.createElement("div");
-    box.className = "edit-item correction-item severity-" + item.severity;
+    box.className = "edit-item correction-item severity-" + safeSeverity(item.severity);
     box.id = "corr-" + idx;
     box.innerHTML =
-      '<p><span class="tag">' + item.error_type + '</span><span class="badge small-badge">' + item.severity + '</span></p>' +
-      "<p><strong>원문</strong>: " + item.sentence + "</p>" +
-      "<p><strong>교정</strong>: " + item.corrected + "</p>" +
-      "<p><strong>근거</strong>: " + item.explanation + "</p>";
+      '<p><span class="tag">' + esc(item.error_type) + '</span><span class="badge small-badge">' + esc(safeSeverity(item.severity)) + '</span></p>' +
+      "<p><strong>원문</strong>: " + esc(item.sentence) + "</p>" +
+      "<p><strong>교정</strong>: " + esc(item.corrected) + "</p>" +
+      "<p><strong>근거</strong>: " + esc(item.explanation) + "</p>";
     grammarCorrectionsEl.appendChild(box);
   });
 }
@@ -525,7 +555,7 @@ function renderGrammarImpact(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>이슈</strong>: " + item.issue + "</p>" +
+      "<p><strong>이슈</strong>: " + esc(item.issue) + "</p>" +
       "<p><strong>횟수</strong>: " + item.count + "</p>" +
       "<p><strong>예상 감점 영향</strong>: -" + item.estimated_penalty_0_5 + "점</p>";
     grammarImpactEl.appendChild(box);
@@ -550,7 +580,7 @@ function renderScoreSimulator(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>액션</strong>: " + item.action + "</p>" +
+      "<p><strong>액션</strong>: " + esc(item.action) + "</p>" +
       "<p><strong>예상 상승</strong>: +" + item.expected_delta_0_5 + "점</p>" +
       "<p><strong>예상 밴드</strong>: " + item.projected_band_1_6 + " / 6</p>";
     scoreSimulatorEl.appendChild(box);
@@ -563,11 +593,11 @@ function renderSmartRecommendations(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>액션</strong>: " + item.title + "</p>" +
-      "<p><strong>기대효과</strong>: " + item.impact + "</p>" +
-      "<p><strong>신뢰도</strong>: " + (item.confidence || "medium") + "</p>" +
-      "<p><strong>이유</strong>: " + item.why + "</p>" +
-      "<p><strong>실행법</strong>: " + item.how_to + "</p>";
+      "<p><strong>액션</strong>: " + esc(item.title) + "</p>" +
+      "<p><strong>기대효과</strong>: " + esc(item.impact) + "</p>" +
+      "<p><strong>신뢰도</strong>: " + esc(item.confidence || "medium") + "</p>" +
+      "<p><strong>이유</strong>: " + esc(item.why) + "</p>" +
+      "<p><strong>실행법</strong>: " + esc(item.how_to) + "</p>";
     smartRecommendationsEl.appendChild(box);
   });
 }
@@ -578,9 +608,9 @@ function renderTopPriorityActions(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>우선 액션</strong>: " + item.title + "</p>" +
-      "<p><strong>기대효과</strong>: " + item.impact + "</p>" +
-      "<p><strong>신뢰도</strong>: " + (item.confidence || "medium") + "</p>";
+      "<p><strong>우선 액션</strong>: " + esc(item.title) + "</p>" +
+      "<p><strong>기대효과</strong>: " + esc(item.impact) + "</p>" +
+      "<p><strong>신뢰도</strong>: " + esc(item.confidence || "medium") + "</p>";
     topPriorityActionsEl.appendChild(box);
   });
 }
@@ -591,9 +621,9 @@ function renderTargetEta(eta) {
   const box = document.createElement("div");
   box.className = "edit-item";
   box.innerHTML =
-    "<p><strong>예상 제출 횟수</strong>: " + eta.estimated_attempts + "회</p>" +
-    "<p><strong>페이스</strong>: " + eta.pace_label + "</p>" +
-    "<p><strong>메시지</strong>: " + eta.message + "</p>";
+    "<p><strong>예상 제출 횟수</strong>: " + esc(eta.estimated_attempts) + "회</p>" +
+    "<p><strong>페이스</strong>: " + esc(eta.pace_label) + "</p>" +
+    "<p><strong>메시지</strong>: " + esc(eta.message) + "</p>";
   targetEtaEl.appendChild(box);
 }
 
@@ -606,7 +636,7 @@ function renderSentenceVariety(v) {
     "<p><strong>Short</strong>: " + Math.round((v.short_ratio || 0) * 100) + "%</p>" +
     "<p><strong>Medium</strong>: " + Math.round((v.medium_ratio || 0) * 100) + "%</p>" +
     "<p><strong>Long</strong>: " + Math.round((v.long_ratio || 0) * 100) + "%</p>" +
-    "<p><strong>코치</strong>: " + (v.recommendation || "") + "</p>";
+    "<p><strong>코치</strong>: " + esc(v.recommendation || "") + "</p>";
   sentenceVarietyEl.appendChild(box);
 }
 
@@ -635,7 +665,7 @@ function renderTargetBandStrategy(items) {
   (items || []).forEach(function(item) {
     const box = document.createElement("div");
     box.className = "edit-item";
-    box.innerHTML = "<p><strong>전략</strong>: " + item.title + "</p><p>" + item.detail + "</p>";
+    box.innerHTML = "<p><strong>전략</strong>: " + esc(item.title) + "</p><p>" + esc(item.detail) + "</p>";
     targetBandStrategyEl.appendChild(box);
   });
 }
@@ -646,8 +676,8 @@ function renderRepetitionTraining(items) {
     const box = document.createElement("div");
     box.className = "edit-item";
     box.innerHTML =
-      "<p><strong>반복어</strong>: " + item.word + " (" + item.count + "회)</p>" +
-      "<p><strong>대체어</strong>: " + (item.alternatives || []).join(", ") + "</p>";
+      "<p><strong>반복어</strong>: " + esc(item.word) + " (" + esc(item.count) + "회)</p>" +
+      "<p><strong>대체어</strong>: " + esc((item.alternatives || []).join(", ")) + "</p>";
     repetitionTrainingEl.appendChild(box);
   });
 }
@@ -751,6 +781,28 @@ function startTimer() {
   }, 1000);
 }
 
+function renderEngineInfo(engine) {
+  if (!engineBadgeEl || !engineInfoEl) return;
+  if (!engine) {
+    engineBadgeEl.textContent = "레거시 기록 (버전 정보 없음)";
+    engineInfoEl.innerHTML = "<p>이 결과는 버전 스탬프 도입 이전에 저장된 형식입니다.</p>";
+    return;
+  }
+  engineBadgeEl.textContent = "v" + esc(engine.scoring_engine_version);
+  const rows = [
+    ["시험 사양", engine.exam_spec_version],
+    ["루브릭", engine.rubric_version],
+    ["문법 규칙", engine.grammar_rules_version],
+    ["결과 스키마", engine.result_schema_version],
+    ["채점 방식", engine.provider === "heuristic" ? "결정론적 휴리스틱 (AI 미개입)" : esc(engine.provider)],
+    ["모델", engine.model === "not-applicable" ? "해당 없음" : esc(engine.model)],
+    ["캘리브레이션", engine.calibration_version === "uncalibrated" ? "미적용 (전문가 데이터 확보 전)" : esc(engine.calibration_version)],
+  ];
+  engineInfoEl.innerHTML = rows.map(function(r) {
+    return '<p class="kv"><span class="kv-key">' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span></p>';
+  }).join("");
+}
+
 function renderRisk(risk) {
   riskPanel.classList.remove("hidden");
   riskLevelEl.textContent = risk.risk_level;
@@ -797,9 +849,10 @@ async function fetchHistory() {
       const div = document.createElement("div");
       div.className = "history-row";
       const typeLabel = row.prompt_type === "email" ? "이메일" : "학술토론";
+      const legacyTag = row.is_legacy ? ' <span class="badge small-badge" title="구버전 엔진으로 채점됨 — 최신 결과와 직접 비교 부정확할 수 있음">구버전</span>' : "";
       div.innerHTML =
-        "<span>#" + row.id + " · " + typeLabel + " · " + new Date(row.created_at).toLocaleString() + "</span>" +
-        "<strong>Band " + row.score_band_1_6.toFixed(1) + " / 6</strong>";
+        "<span>#" + esc(row.id) + " · " + esc(typeLabel) + " · " + esc(new Date(row.created_at).toLocaleString()) + legacyTag + "</span>" +
+        "<strong>Band " + esc(row.score_band_1_6.toFixed(1)) + " / 6</strong>";
       historyEl.appendChild(div);
     });
   } catch(e) {
@@ -817,7 +870,10 @@ async function checkRisk() {
     const res = await fetch("/api/precheck", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ essay_text: essay }),
+      body: JSON.stringify({
+        essay_text: essay,
+        prompt_text: promptTextEl ? promptTextEl.value.trim() : "",
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error("위험 체크 실패");
@@ -836,6 +892,7 @@ async function evaluateEssay(isExamMode) {
   }
   const payload = {
     essay_text: essay,
+    prompt_text: promptTextEl ? promptTextEl.value.trim() : "",
     target_score_0_5: Math.max(0, Math.min(5, Number(targetScoreEl.value || 5.0) - 1.0)),
     exam_mode: Boolean(isExamMode),
   };
@@ -864,20 +921,21 @@ async function evaluateEssay(isExamMode) {
     setText(totalRangeEl, result.score_profile.total);
     setText(aiModeBadgeEl, result.ai_mode === "ai" ? (providerLabel(result.ai_provider) + " 연동") : "로컬");
     if (result.grammar_cap_applied) {
+      if (grammarCapChipEl) grammarCapChipEl.hidden = false;
       setText(grammarCapBadgeEl, "적용됨");
-      grammarCapBadgeEl.classList.add("warn");
       setText(grammarCapReasonEl, result.grammar_cap_reason || "문법 상한이 적용되었습니다.");
     } else {
+      if (grammarCapChipEl) grammarCapChipEl.hidden = true;
       setText(grammarCapBadgeEl, "없음");
-      grammarCapBadgeEl.classList.remove("warn");
       setText(grammarCapReasonEl, "");
     }
     setText(confidenceEl, result.confidence);
     setText(confidenceReasonEl, result.confidence_reason);
+    renderEngineInfo(result.engine || null);
     animateScoreRing(s);
 
     const detectedType = detectType(essay);
-    setText(taskTagEl, detectedType === "email" ? "Task 2 · 이메일" : "Task 3 · 학술 토론");
+    setText(taskTagEl, detectedType === "email" ? "이메일" : "학술 토론");
     renderDimensionBars(result.dimensions);
 
     setText(summaryKoEl, result.bilingual_feedback.summary_ko);
