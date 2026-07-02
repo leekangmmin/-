@@ -1,0 +1,112 @@
+{
+  "records": [
+    {
+      "record_id": "synthetic-001-raterA",
+      "response_group_id": "synthetic-001",
+      "prompt_id": "demo-prompt-internship",
+      "task_type": "academic_discussion",
+      "prompt_text": "Do you think universities should require an internship before graduation?",
+      "response_text": "I believe internships should be required because they give students real workplace experience that classroom learning cannot fully provide. For example, students who complete internships often report clearer career direction and stronger professional skills.",
+      "overall_score": 4.5,
+      "score_scale": "toefl-1-6",
+      "dimension_scores": [
+        {"dimension_id": "structure", "score": 4.5, "max_score": 6, "comment": "Clear opening and supporting example."},
+        {"dimension_id": "grammar", "score": 5.0, "max_score": 6, "comment": "No material errors."}
+      ],
+      "strengths": ["Clear position", "Specific example"],
+      "weaknesses": ["Could add a second supporting reason"],
+      "evidence_spans": [
+        {"start": 0, "end": 27, "text": "I believe internships shou", "dimension_id": "content", "annotation_type": "strength", "explanation": "Direct thesis statement."}
+      ],
+      "corrections": [],
+      "improved_response": null,
+      "rater": {"rater_id": "synthetic-rater-A", "rater_type": "trained-rater", "qualification": "synthetic fixture", "confidence": 0.9},
+      "rubric_version": "heuristic-6dim-2.0.0+grammar-2.0.0",
+      "rated_at": "2026-07-01T00:00:00Z",
+      "adjudication": {"status": "not-required"},
+      "provenance": {
+        "source_id": "synthetic-fixture-001",
+        "title": "Synthetic test fixture for expert import pipeline",
+        "publisher": null,
+        "author": "test-author",
+        "source_type": "synthetic",
+        "source_url": null,
+        "accessed_at": "2026-07-01T00:00:00Z",
+        "license_status": "permissive",
+        "commercial_use_allowed": true,
+        "redistribution_allowed": true,
+        "is_official": false,
+        "is_human_written": false,
+        "is_human_scored": false,
+        "rater_count": 1,
+        "score_scale": "toefl-1-6",
+        "task_type_compatibility": ["academic_discussion"],
+        "compatibility_with_current_exam": "unknown",
+        "intended_usage": "ui-demo",
+        "limitations": ["synthetic data, not for accuracy claims"]
+      }
+    },
+    {
+      "record_id": "synthetic-001-raterB",
+      "response_group_id": "synthetic-001",
+      "prompt_id": "demo-prompt-internship",
+      "task_type": "academic_discussion",
+      "prompt_text": "Do you think universities should require an internship before graduation?",
+      "response_text": "I believe internships should be required because they give students real workplace experience that classroom learning cannot fully provide. For example, students who complete internships often report clearer career direction and stronger professional skills.",
+      "overall_score": 5.0,
+      "score_scale": "toefl-1-6",
+      "dimension_scores": [
+        {"dimension_id": "structure", "score": 5.0, "max_score": 6}
+      ],
+      "strengths": ["Strong clarity"],
+      "weaknesses": [],
+      "evidence_spans": [],
+      "corrections": [],
+      "rater": {"rater_id": "synthetic-rater-B", "rater_type": "expert-teacher", "confidence": 0.95},
+      "rubric_version": "heuristic-6dim-2.0.0+grammar-2.0.0",
+      "rated_at": "2026-07-01T00:10:00Z",
+      "adjudication": {"status": "not-required"},
+      "provenance": {
+        "source_id": "synthetic-fixture-001",
+        "title": "Synthetic test fixture for expert import pipeline",
+        "source_type": "synthetic",
+        "accessed_at": "2026-07-01T00:00:00Z",
+        "license_status": "permissive",
+        "is_official": false,
+        "intended_usage": "ui-demo",
+        "limitations": ["synthetic data, not for accuracy claims"]
+      }
+    },
+    {
+      "record_id": "synthetic-002-raterA",
+      "response_group_id": "synthetic-002",
+      "prompt_id": "demo-prompt-extension",
+      "task_type": "email",
+      "prompt_text": "Write an email to your professor requesting an extension.",
+      "response_text": "hello teacher i want more time for homework because i was sick, i can not finish it. please give me time.",
+      "overall_score": 2.0,
+      "score_scale": "toefl-1-6",
+      "dimension_scores": [],
+      "strengths": [],
+      "weaknesses": ["No greeting", "Informal register", "Missing closing"],
+      "evidence_spans": [],
+      "corrections": [
+        {"original": "hello teacher", "revised": "Dear Professor [Name],", "category": "register", "explanation": "Email requires formal greeting."}
+      ],
+      "rater": {"rater_id": "synthetic-rater-A", "rater_type": "trained-rater", "confidence": 0.85},
+      "rubric_version": "heuristic-6dim-2.0.0+grammar-2.0.0",
+      "rated_at": "2026-07-01T00:20:00Z",
+      "adjudication": {"status": "not-required"},
+      "provenance": {
+        "source_id": "synthetic-fixture-001",
+        "title": "Synthetic test fixture for expert import pipeline",
+        "source_type": "synthetic",
+        "accessed_at": "2026-07-01T00:00:00Z",
+        "license_status": "permissive",
+        "is_official": false,
+        "intended_usage": "ui-demo",
+        "limitations": ["synthetic data, not for accuracy claims"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "records": [
+    {
+      "record_id": "synthetic-003-raterA",
+      "prompt_id": "demo-prompt-internship",
+      "task_type": "academic_discussion",
+      "response_text": "I believe internships should be required because they give students real workplace experience that classroom learning cannot fully provide. For example, students who complete internships often report clearer career direction and stronger professional skills.",
+      "overall_score": 4.5,
+      "score_scale": "toefl-1-6",
+      "rater": {"rater_id": "synthetic-rater-A", "rater_type": "trained-rater"},
+      "rubric_version": "heuristic-6dim-2.0.0+grammar-2.0.0",
+      "rated_at": "2026-07-01T00:00:00Z",
+      "provenance": {
+        "source_id": "synthetic-fixture-002",
+        "title": "Duplicate-of-001 test fixture",
+        "source_type": "synthetic",
+        "accessed_at": "2026-07-01T00:00:00Z",
+        "license_status": "permissive",
+        "is_official": false,
+        "intended_usage": "ui-demo",
+        "limitations": ["synthetic data"]
+      }
+    },
+    {
+      "record_id": "synthetic-004-missing-fields",
+      "prompt_id": "demo-prompt-broken",
+      "task_type": "academic_discussion"
+    },
+    {
+      "record_id": "synthetic-005-bad-task-type",
+      "prompt_id": "demo-prompt-broken2",
+      "task_type": "not_a_real_task_type",
+      "response_text": "This row has an invalid task_type value and should fail schema validation.",
+      "overall_score": 3.0,
+      "score_scale": "toefl-1-6",
+      "rater": {"rater_id": "synthetic-rater-A", "rater_type": "trained-rater"},
+      "rubric_version": "heuristic-6dim-2.0.0+grammar-2.0.0",
+      "rated_at": "2026-07-01T00:00:00Z",
+      "provenance": {
+        "source_id": "synthetic-fixture-002",
+        "title": "Invalid task_type test fixture",
+        "source_type": "synthetic",
+        "accessed_at": "2026-07-01T00:00:00Z",
+        "license_status": "permissive",
+        "is_official": false,
+        "intended_usage": "ui-demo",
+        "limitations": ["synthetic data"]
+      }
+    }
+  ]
+}
