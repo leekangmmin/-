@@ -4,7 +4,43 @@ import re
 from dataclasses import dataclass
 from statistics import mean
 
+from app.grammar import GRAMMAR_RULES_VERSION, GrammarSignals, analyze_grammar
 from app.models import PromptType, ScoreDimension
+
+# 점수 산출 로직 변경 시 버전을 올린다. 평가 결과에 함께 저장되어 재현성을 보장한다.
+SCORING_ENGINE_VERSION = "2.0.0"
+RUBRIC_VERSION = f"heuristic-6dim-{SCORING_ENGINE_VERSION}+grammar-{GRAMMAR_RULES_VERSION}"
+
+# ── 점수 공식 변경 금지 게이트 ────────────────────────────────────────────
+# 이 값은 가중치·임계값·페널티 등 "점수를 계산하는 수식 자체"의 버전이다.
+# SCORING_ENGINE_VERSION과 현재는 1:1로 같이 움직이지만 개념적으로 분리해뒀다 —
+# 향후 캘리브레이션 레이어가 추가되면 SCORING_ENGINE_VERSION은 그대로 두고
+# 이 값만 올려 "원시 공식은 그대로, 보정만 추가됨"을 구분할 수 있게 하기 위함이다.
+#
+# 중요: 전문가 데이터로 실측 오차가 확인되기 전까지, 이 공식(가중치/임계값/페널티)을
+# 미적 판단만으로 다시 바꾸지 마라. 0.5 단위 반올림 경계에서 사소한 변화가 표시
+# 점수를 한 단계 움직이는 현상은 알려진 한계로 기록하되(quantization_distance),
+# 데이터 없이 재설계하지 않는다 — docs/scoring-formula-change-gate.md 참고.
+SCORING_FORMULA_VERSION = SCORING_ENGINE_VERSION
+
+
+@dataclass
+class ScoringBreakdown:
+    """점수 산출 과정의 양자화(0.5 단위 반올림) 영향을 추적하기 위한 상세 결과.
+
+    전문가 데이터가 쌓인 뒤 "반올림 경계 구간에서 MAE가 더 큰가", "반올림
+    직전/직후로 편향이 갈리는가"를 분석할 수 있게 raw(반올림 전) 값을 함께
+    저장한다. 이 필드들은 점수 공식을 바꾸지 않고 단지 관찰 가능하게만 만든다.
+    """
+
+    dimensions: list[ScoreDimension]
+    total_0_5: float  # 최종 표시 점수 (0.5 단위 반올림 후)
+    pre_round_raw_score: float  # 반올림 전 원점수
+    distance_to_rounding_boundary: float  # 원점수가 가장 가까운 0.5 경계에서 얼마나 떨어져 있는지 (0에 가까울수록 반올림에 민감)
+    component_scores: dict[str, float]  # 차원별 반올림 전 기여 점수 (0-5 스케일)
+    scoring_formula_version: str
+    grammar_cap_applied: bool
+    grammar_cap_ceiling: float | None
 
 TRANSITIONS = {
     "however",
@@ -136,110 +172,20 @@ def analyze_essay(essay_text: str) -> EssayMetrics:
     )
 
 
-def _grammar_risk_count(essay_text: str) -> int:
-    lowered = essay_text.lower()
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", essay_text.strip()) if s.strip()]
-
-    run_on = sum(len(re.findall(r"[A-Za-z']+", s)) > 32 for s in sentences)
-    comma_splice = sum(bool(re.search(r",\s+(i|we|they|he|she|it)\s+\w+", s.lower())) for s in sentences)
-    article = len(re.findall(r"\b(a|an)\s+[aeiou]\w+", lowered))
-    article += len(re.findall(r"\b(an)\s+[^aeiou\W]\w+", lowered))
-    article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence)\b", lowered))
-    article += len(re.findall(r"\bmany\s+information\b|\bfewer\s+peoples\b", lowered))
-    preposition = len(re.findall(r"\bdiscuss about\b|\bmention about\b", lowered))
-    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered))
-    tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
-    tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
-    tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
-    subject_verb = len(re.findall(r"\b(people|students|they)\s+is\b", lowered))
-    subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do|need|want|make|mention)\b", lowered))
-    subject_verb += len(re.findall(r"\b(they|we)\s+needs\b|\bi\s+goes\b", lowered))
-    subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
-    subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
-    subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
-    subject_verb += len(re.findall(r"\b(teacher|student|child)\s+have\b", lowered))
-    subject_verb += len(re.findall(r"\b(many|several|few)\s+student\b", lowered))
-    punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
-    punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
-    punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
-    style = len(re.findall(r"\b(could|should|would)\s+of\b", lowered))
-    style += len(re.findall(r"\bmore\s+better\b|\bmore\s+worse\b", lowered))
-    fragment_like = 0
-    for s in sentences:
-        tokens = re.findall(r"[A-Za-z']+", s)
-        if len(tokens) < 5:
-            continue
-        has_verb = any(
-            re.fullmatch(r"(is|are|was|were|be|been|being|have|has|had|do|does|did|can|could|should|would|will|might|may|must)", t.lower())
-            or t.lower().endswith(("ed", "ing", "s"))
-            for t in tokens
-        )
-        if not has_verb:
-            fragment_like += 1
-
-    return run_on + comma_splice + article + preposition + tense + subject_verb + punctuation + fragment_like + style
-
-
-def _grammar_risk_profile(essay_text: str) -> dict[str, int | bool]:
-    lowered = essay_text.lower()
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", essay_text.strip()) if s.strip()]
-
-    run_on = sum(len(re.findall(r"[A-Za-z']+", s)) > 32 for s in sentences)
-    comma_splice = sum(bool(re.search(r",\s+(i|we|they|he|she|it)\s+\w+", s.lower())) for s in sentences)
-    article = len(re.findall(r"\b(a|an)\s+[aeiou]\w+", lowered))
-    article += len(re.findall(r"\b(an)\s+[^aeiou\W]\w+", lowered))
-    article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence)\b", lowered))
-    article += len(re.findall(r"\bmany\s+information\b|\bfewer\s+peoples\b", lowered))
-    preposition = len(re.findall(r"\bdiscuss about\b|\bmention about\b", lowered))
-    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered))
-    tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
-    tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
-    tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
-    subject_verb = len(re.findall(r"\b(people|students|they)\s+is\b", lowered))
-    subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do|need|want|make|mention)\b", lowered))
-    subject_verb += len(re.findall(r"\b(they|we)\s+needs\b|\bi\s+goes\b", lowered))
-    subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
-    subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
-    subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
-    subject_verb += len(re.findall(r"\b(teacher|student|child)\s+have\b", lowered))
-    subject_verb += len(re.findall(r"\b(many|several|few)\s+student\b", lowered))
-    punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
-    punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
-    punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
-    style = len(re.findall(r"\b(could|should|would)\s+of\b", lowered))
-    style += len(re.findall(r"\bmore\s+better\b|\bmore\s+worse\b", lowered))
-    fragment_like = 0
-    for s in sentences:
-        tokens = re.findall(r"[A-Za-z']+", s)
-        if len(tokens) < 5:
-            continue
-        has_verb = any(
-            re.fullmatch(r"(is|are|was|were|be|been|being|have|has|had|do|does|did|can|could|should|would|will|might|may|must)", t.lower())
-            or t.lower().endswith(("ed", "ing", "s"))
-            for t in tokens
-        )
-        if not has_verb:
-            fragment_like += 1
-
-    total = run_on + comma_splice + article + preposition + tense + subject_verb + punctuation + fragment_like + style
-    repeated_error = total >= 6 or max(run_on + comma_splice, article, preposition, tense, subject_verb, punctuation, fragment_like) >= 3
-    severe_breakdown = (run_on + comma_splice) >= 3 or fragment_like >= 2 or punctuation >= 3 or total >= 10
-    return {
-        "total": total,
-        "repeated_error": repeated_error,
-        "severe_breakdown": severe_breakdown,
-    }
+def _grammar_risk_profile(essay_text: str) -> GrammarSignals:
+    """공유 문법 모듈에 위임한다 (구현 중복 제거)."""
+    return analyze_grammar(essay_text)
 
 
 def grammar_cap_status(essay_text: str) -> dict[str, float | bool | str]:
     profile = _grammar_risk_profile(essay_text)
-    if bool(profile["severe_breakdown"]):
+    if profile.severe_breakdown:
         return {
             "applied": True,
             "ceiling_0_5": 2.0,
             "reason": "문장 형식 파괴/중대한 문법 붕괴가 감지되어 고득점 상한이 적용되었습니다.",
         }
-    if bool(profile["repeated_error"]):
+    if profile.repeated_error:
         return {
             "applied": True,
             "ceiling_0_5": 2.5,
@@ -270,9 +216,15 @@ _EMAIL_CLOSINGS = re.compile(
 
 
 def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDimension], float]:
+    """하위 호환 진입점. 상세 양자화 메타데이터가 필요하면 score_essay_detailed()를 써라."""
+    breakdown = score_essay_detailed(essay_text, prompt_type)
+    return breakdown.dimensions, breakdown.total_0_5
+
+
+def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBreakdown:
     metrics = analyze_essay(essay_text)
     grammar_profile = _grammar_risk_profile(essay_text)
-    grammar_risk = int(grammar_profile["total"])
+    grammar_risk = grammar_profile.total
     min_words, max_words = _target_word_window(prompt_type)
     sentence_lengths = [len(re.findall(r"[A-Za-z']+", s)) for s in re.split(r"(?<=[.!?])\s+", essay_text.strip()) if s.strip()]
     variety = _sentence_variety_score(sentence_lengths)
@@ -307,8 +259,14 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
 
     # ── Content (질문에 맞는 내용) ────────────────────────────────────────────
     content = 1.5
+    # 단어 수 임계값을 3단계로 완화한다. 기존 2단계(0.5 vs 1.0)는 경계선 바로 위/
+    # 아래에서 무의미한 패딩 몇 단어만 추가해도 +0.5가 뛰는 절벽 구조였다
+    # (Phase 2 인젝션 안전성 검증에서 실제로 재현됨: 의미 없는 문장 추가만으로도
+    # 동일한 점수 상승이 발생 — 이는 인젝션 방어 문제가 아니라 분량 게이밍 문제).
     if min_words <= metrics.word_count <= max_words:
         content += 1.0
+    elif metrics.word_count >= min_words - 10:
+        content += 0.75
     elif metrics.word_count >= min_words - 20:
         content += 0.5
     if metrics.position_hits >= 1:
@@ -348,6 +306,8 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
         example += 0.75
     if metrics.sentence_count >= 8:
         example += 0.75
+    elif metrics.sentence_count >= 6:
+        example += 0.55
     elif metrics.sentence_count >= 5:
         example += 0.4
     if metrics.avg_sentence_length >= 12:
@@ -377,7 +337,7 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
         grammar -= 1.1
     elif grammar_risk >= 2:
         grammar -= 0.6
-    if bool(grammar_profile.get("severe_breakdown")):
+    if grammar_profile.severe_breakdown:
         grammar -= 0.75
     if grammar_risk >= 10:
         grammar = min(grammar, 2.75)
@@ -443,8 +403,9 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
         weight = 2.4 if d.name == "Grammar" else 1.0
         weighted_sum += d.score * weight
         weight_total += weight
-    # Global calibration: keep estimated scores stricter to avoid over-scoring.
-    strict_penalty = 1.35
+    # 전역 캘리브레이션: 문법 오탐 제거(grammar 2.0) 이후 기준을 재조정했다.
+    # 기존 1.35 는 오탐 노이즈를 상쇄하려던 값 — 유지하면 정상 답안이 과소평가된다.
+    strict_penalty = 0.55
     if grammar_risk >= 10:
         strict_penalty += 0.6
     elif grammar_risk >= 6:
@@ -458,12 +419,29 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
     if metrics.evidence_hits == 0:
         strict_penalty += 0.2
 
-    total = _round_half((weighted_sum / weight_total) - strict_penalty - (0.1 if repetition_penalty >= 0.5 else 0.0))
+    pre_round_raw_score = (weighted_sum / weight_total) - strict_penalty - (0.1 if repetition_penalty >= 0.5 else 0.0)
+    pre_round_raw_score = max(0.0, min(5.0, pre_round_raw_score))
+    total = _round_half(pre_round_raw_score)
 
     # Repeated grammar errors or broken sentence form make >4.5 band difficult.
     # (4.5 band corresponds to 3.5 on the 0-5 internal scale.)
     cap = grammar_cap_status(essay_text)
-    if bool(cap["applied"]):
+    cap_applied = bool(cap["applied"])
+    if cap_applied:
         total = min(total, float(cap["ceiling_0_5"]))
 
-    return dimensions, total
+    # 0.5 단위 경계까지의 거리 — 0에 가까울수록 사소한 입력 변화로 표시 점수가
+    # 쉽게 넘어갈 수 있는 "절벽 근처" 상태임을 뜻한다.
+    lower_boundary = round(pre_round_raw_score * 2) / 2
+    distance_to_rounding_boundary = round(abs(pre_round_raw_score - lower_boundary), 4)
+
+    return ScoringBreakdown(
+        dimensions=dimensions,
+        total_0_5=total,
+        pre_round_raw_score=round(pre_round_raw_score, 4),
+        distance_to_rounding_boundary=distance_to_rounding_boundary,
+        component_scores={d.name: d.score for d in dimensions},
+        scoring_formula_version=SCORING_FORMULA_VERSION,
+        grammar_cap_applied=cap_applied,
+        grammar_cap_ceiling=float(cap["ceiling_0_5"]) if cap_applied else None,
+    )

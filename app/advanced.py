@@ -5,6 +5,7 @@ import re
 from collections import Counter
 from typing import Any, Literal
 
+from app.grammar import analyze_grammar, find_comma_splices, split_sentences, starts_with_vowel_sound
 from app.scorer import analyze_essay
 
 STOPWORDS = {
@@ -143,25 +144,7 @@ def _to_base_form(verb: str) -> str:
 
 
 def _starts_with_vowel_sound(word: str) -> bool:
-    lowered = word.lower()
-    if lowered.startswith(("uni", "use", "user", "euro", "one", "once", "ufo", "uk", "us")):
-        return False
-    if lowered.startswith(("hour", "honest", "honor", "heir")):
-        return True
-    return bool(re.match(r"^[aeiou]", lowered))
-
-
-def _count_article_mismatch(text: str) -> int:
-    count = 0
-    for m in re.finditer(r"\b(a|an)\s+([A-Za-z][A-Za-z'\-]*)", text, flags=re.IGNORECASE):
-        article = m.group(1).lower()
-        word = m.group(2)
-        vowel_sound = _starts_with_vowel_sound(word)
-        if article == "a" and vowel_sound:
-            count += 1
-        elif article == "an" and not vowel_sound:
-            count += 1
-    return count
+    return starts_with_vowel_sound(word)
 
 
 def evaluate_prompt_fit(prompt_text: str, essay_text: str) -> dict:
@@ -227,57 +210,8 @@ def map_claim_evidence(essay_text: str) -> list[dict]:
 
 
 def grammar_error_stats(essay_text: str) -> dict:
-    lowered = essay_text.lower()
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", essay_text.strip()) if s.strip()]
-
-    run_on = sum(len(_tokens(s)) > 32 for s in sentences)
-    run_on += sum(bool(re.search(r",\s+(i|we|they|he|she|it)\s+\w+", s.lower())) for s in sentences)
-    article = _count_article_mismatch(essay_text)
-    article += len(re.findall(r"\b(a|an)\s+(information|advice|research|evidence|homework|luggage)\b", lowered))
-    article += len(re.findall(r"\bmany\s+information\b|\bfewer\s+peoples\b", lowered))
-    article += len(re.findall(r"\bfrom\s+internet\b", lowered))
-
-    preposition = len(re.findall(r"\bdiscuss(?:es)? about\b|\bmentions? about\b", lowered))
-    preposition += len(re.findall(r"\bin nowadays\b|\bmarried with\b|\bdepend of\b|\binterested on\b|\bdiscuss on\b", lowered))
-    preposition += len(re.findall(r"\baccording to me\b", lowered))
-    preposition += len(re.findall(r"\bdespite of\b|\bbetween\s+\w+\s+to\s+\w+\b", lowered))
-    preposition += len(re.findall(r"\bdifferent with\b", lowered))
-    tense = len(re.findall(r"\byesterday\b.*\b(is|are)\b", lowered))
-    tense += len(re.findall(r"\b(last year|last week|in \d{4})\b[^.?!]{0,40}\b(is|are|has)\b", lowered))
-    tense += len(re.findall(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered))
-    subject_verb = len(re.findall(r"\b(people|students|they)\s+is\b", lowered))
-    subject_verb += len(re.findall(r"\b(he|she|it)\s+(go|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered))
-    subject_verb += len(re.findall(r"\bthere\s+is\s+(many|several|two|three|four|five|students|people)\b", lowered))
-    subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+are\b", lowered))
-    subject_verb += len(re.findall(r"\bone of\s+the\s+\w+\s+(have|do|were)\b", lowered))
-    subject_verb += len(re.findall(r"\bthe\s+number\s+of\s+\w+\s+are\b", lowered))
-    subject_verb += len(re.findall(r"\ba\s+number\s+of\s+\w+\s+is\b", lowered))
-    subject_verb += len(re.findall(r"\b(people|children)\s+has\b", lowered))
-    subject_verb += len(re.findall(r"\b(people|students|children|they|we)\s+was\b", lowered))
-    subject_verb += len(re.findall(r"\b(teacher|student|child)\s+have\b", lowered))
-    subject_verb += len(re.findall(r"\b(he|she|it)\s+don't\b|\b(i|we|they)\s+doesn't\b", lowered))
-    subject_verb += len(re.findall(r"\b(i|we|they|people|students)\s+(has|does|needs|makes|suggests|shows|gives|takes|helps)\b", lowered))
-    subject_verb += len(re.findall(r"\b(it|this|that)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered))
-    subject_verb += len(re.findall(r"(^|[.!?]\s+)(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered))
-    punctuation = sum(1 for s in sentences if not re.search(r"[.!?]$", s))
-    punctuation += len(re.findall(r"\s,{2,}|\.{2,}(?!\.)", essay_text))
-    punctuation += len(re.findall(r"[a-zA-Z][.!?][A-Za-z]", essay_text))
-    style = len(re.findall(r"\b(could|should|would)\s+of\b", lowered))
-    style += len(re.findall(r"\bmore\s+better\b|\bmore\s+worse\b", lowered))
-    style += len(re.findall(r"\bi\s+am\s+agree\b|\bi'm\s+agree\b", lowered))
-    style += len(re.findall(r"\bif\s+i\s+was\b", lowered))
-    style += len(re.findall(r"\b(people|students|children)\s+which\b", lowered))
-
-    total = run_on + article + preposition + tense + subject_verb + punctuation + style
-    return {
-        "tense": tense,
-        "article": article,
-        "preposition": preposition,
-        "run_on": run_on,
-        "subject_verb": subject_verb,
-        "punctuation": punctuation,
-        "total": total,
-    }
+    """공유 문법 모듈(app.grammar)에 위임한다. 규칙 중복/불일치 제거."""
+    return analyze_grammar(essay_text).as_stats_dict()
 
 
 def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[str, Any]]:
@@ -377,10 +311,16 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("subject_verb", m_plural_aux.group(0), fixed, "복수 주어나 I 뒤에는 단수형 동사 대신 원형/복수형 동사가 와야 합니다.", "high")
 
         lowered = current_lowered()
-        m_3p = re.search(r"\b(he|she|it)\s+(go|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered)
+        # 조동사/to부정사 뒤 원형("does he have", "to make it work")은 정상이므로 제외
+        _3p_pattern = (
+            r"(?<!do\s)(?<!does\s)(?<!did\s)(?<!to\s)(?<!not\s)(?<!can\s)(?<!will\s)"
+            r"(?<!would\s)(?<!should\s)(?<!might\s)(?<!must\s)(?<!may\s)(?<!let\s)(?<!help\s)"
+            r"\b(he|she|it)\s+(go|have|do|need|make|suggest|show|mean|help|give|take|mention)\b"
+        )
+        m_3p = re.search(_3p_pattern, lowered)
         if m_3p:
             fixed = re.sub(
-                r"\b(he|she|it)\s+(go|have|do|need|make|suggest|show|mean|help|give|take|mention)\b",
+                _3p_pattern,
                 lambda match: f"{match.group(1)} {_to_third_person_singular(match.group(2))}",
                 working_sentence,
                 count=1,
@@ -389,16 +329,17 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("subject_verb", m_3p.group(0), fixed, "3인칭 단수 주어(he/she/it)에는 동사에 -s 형태가 필요합니다.", "high")
 
         lowered = current_lowered()
-        m_neutral_subject = re.search(r"\b(it|this|that)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention)\b", lowered)
+        # "that/it + 복수동사"는 관계대명사("students that have...")에서 정상이므로 this 만 교정
+        m_neutral_subject = re.search(r"\bthis\s+(are|were)\b", lowered)
         if m_neutral_subject:
             fixed = re.sub(
-                r"\b(it|this|that)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention)\b",
-                lambda match: f"{match.group(1)} {_to_third_person_singular(match.group(2)) if match.group(2).lower() not in {'are', 'were'} else ('is' if match.group(2).lower() == 'are' else 'was')}",
+                r"\bthis\s+(are|were)\b",
+                lambda match: f"this {'is' if match.group(1).lower() == 'are' else 'was'}",
                 working_sentence,
                 count=1,
                 flags=re.IGNORECASE,
             )
-            apply_fix("subject_verb", m_neutral_subject.group(0), fixed, "it/this/that은 단수 주어이므로 단수 동사 형태가 필요합니다.", "high")
+            apply_fix("subject_verb", m_neutral_subject.group(0), fixed, "this는 단수 주어이므로 단수 동사 형태가 필요합니다.", "high")
 
         lowered = current_lowered()
         m_singular_noun = re.search(r"^(the|this|that)\s+(teacher|student|child|professor|policy|school|government|internet|technology|idea|method)\s+(are|were|have|do|need|make|suggest|show|mean|help|give|take|mention|discuss)\b", lowered)
@@ -644,18 +585,20 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("style", m_comp.group(0), fixed, "비교급 중복 표현(more better/worse)은 감점 요인이므로 단일 비교급으로 쓰세요.", "medium")
 
         lowered = current_lowered()
-        m_tense = re.search(r"\b(is|are)\b", lowered) if "yesterday" in lowered else None
+        # yesterday 와 같은 절 안에서 is/are 가 함께 쓰인 경우만 시제 불일치로 본다.
+        m_tense = re.search(r"\byesterday\b[^.?!,]{0,40}\b(is|are)\b", lowered)
         if m_tense:
             fixed = re.sub(r"\bis\b", "was", working_sentence, count=1, flags=re.IGNORECASE)
             fixed = re.sub(r"\bare\b", "were", fixed, count=1, flags=re.IGNORECASE)
             apply_fix("tense", m_tense.group(0), fixed, "과거 시점(yesterday)과 현재 시제(is/are)가 섞이면 시제 일관성이 깨집니다.", "high")
 
         lowered = current_lowered()
-        m_tense2 = re.search(r"\b(i|we|they)\s+was\b|\b(he|she|it)\s+were\b", lowered)
+        # "I was" 는 올바른 영어 — we/they was 와 (가정법 제외) he/she/it were 만 교정
+        m_tense2 = re.search(r"\b(we|they)\s+was\b|(?<!if\s)(?<!wish\s)(?<!though\s)\b(he|she|it)\s+were\b", lowered)
         if m_tense2:
-            fixed = re.sub(r"\b(i|he|she|it)\s+were\b", lambda m: f"{m.group(1)} was", working_sentence, flags=re.IGNORECASE)
+            fixed = re.sub(r"(?<!if\s)(?<!wish\s)(?<!though\s)\b(he|she|it)\s+were\b", lambda m: f"{m.group(1)} was", working_sentence, flags=re.IGNORECASE)
             fixed = re.sub(r"\b(we|they)\s+was\b", lambda m: f"{m.group(1)} were", fixed, flags=re.IGNORECASE)
-            apply_fix("tense", m_tense2.group(0), fixed, "be동사 수일치/시제 형태가 어색합니다. I/he/she/it was, we/they were를 사용하세요.", "high")
+            apply_fix("tense", m_tense2.group(0), fixed, "be동사 수일치가 어색합니다. he/she/it was, we/they were를 사용하세요.", "high")
 
         lowered = current_lowered()
         token_count = len(_tokens(working_sentence))
@@ -665,10 +608,11 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("run_on", m_runon.group(0) if m_runon else original_sentence, fixed, "긴 문장에 접속절이 과도하게 연결되면 run-on 위험이 커집니다. 두 문장으로 나누세요.", "high")
 
         lowered = current_lowered()
-        m_comma = re.search(r"\b[^,]+,\s+(i|we|they|he|she|it)\s+[a-z]+", lowered)
-        if m_comma:
+        # 종속절 도입부("When ..., I ...")는 정상 구조 — 진짜 comma splice 만 교정
+        if find_comma_splices([working_sentence]) > 0:
+            m_comma = re.search(r",\s+(i|we|they|he|she|it|this|that|there)\s+[a-z]+", lowered)
             fixed = working_sentence.replace(",", ";", 1)
-            apply_fix("comma_splice", m_comma.group(0), fixed, "독립절 2개를 콤마만으로 연결하면 comma splice 오류가 됩니다. 세미콜론/마침표를 사용하세요.", "high")
+            apply_fix("comma_splice", m_comma.group(0) if m_comma else original_sentence, fixed, "독립절 2개를 콤마만으로 연결하면 comma splice 오류가 됩니다. 세미콜론/마침표를 사용하세요.", "high")
 
         lowered = current_lowered()
         m_style = re.search(r"\b(firstly|secondly|thirdly)\b", lowered)
@@ -702,15 +646,17 @@ def build_smart_recommendations(
     metrics = analyze_essay(essay_text)
     recs: list[dict[str, str]] = []
 
-    recs.append(
-        {
-            "title": "문법 오류 우선 제거",
-            "why": "문법은 가중치가 높아 총점에 직접적인 영향을 줍니다.",
-            "how_to": "상위 오류 2개(예: 수일치, run-on)만 선택해 10문장 교정 후 재작성하세요.",
-            "impact": "+0.3~0.6",
-            "confidence": "high",
-        }
-    )
+    # 실제로 감지된 문법 오류가 있을 때만 문법 교정을 최우선으로 권한다.
+    if grammar_stats.get("total", 0) > 0:
+        recs.append(
+            {
+                "title": "문법 오류 우선 제거",
+                "why": "문법은 가중치가 높아 총점에 직접적인 영향을 줍니다.",
+                "how_to": "상위 오류 2개(예: 수일치, run-on)만 선택해 10문장 교정 후 재작성하세요.",
+                "impact": "+0.3~0.6",
+                "confidence": "high",
+            }
+        )
 
     if grammar_stats.get("run_on", 0) > 0:
         recs.append(
@@ -1003,18 +949,19 @@ def _rewrite_priority_action(weakness: str) -> str:
 def bilingual_summary(total_score: float, prompt_fit_score: float, weaknesses: list[str]) -> dict:
     score_band = _to_band_1_6(total_score)
     prompt_fit_band = _to_band_1_6(prompt_fit_score)
-    priority = _rewrite_priority_action(weaknesses[0] if weaknesses else "근거를 더 구체적으로 쓰세요")
+    priority = _rewrite_priority_action(weaknesses[0] if weaknesses else "근거를 더 구조적으로 쓰세요")
+    warn = " (경고: 5.5 미만, 추가 학습 필요)" if score_band < 5.5 else ""
     summary_ko = (
-        f"현재 예상 밴드는 {score_band:.1f}/6.0입니다. "
+        f"현재 예상 밴드는 {score_band:.1f}/6.0{warn}입니다. "
         f"주제 반영도는 {prompt_fit_band:.1f}/6.0입니다. "
         f"가장 먼저 할 일은 {priority}"
     )
     summary_en = (
-        f"Your current estimated band is {score_band:.1f}/6.0. "
+        f"Your current estimated band is {score_band:.1f}/6.0{warn}. "
         f"Your task-response fit is {prompt_fit_band:.1f}/6.0. "
         f"Top priority: {priority}"
     )
-    return {"summary_ko": summary_ko, "summary_en": summary_en}
+    return {"summary_ko": summary_ko, "summary_en": summary_en, "max_score": 6.0}
 
 
 def build_dashboard(rows: list[dict]) -> dict:
@@ -1333,17 +1280,25 @@ def personal_weakness_ranking(rows: list[dict[str, Any]], limit: int = 10) -> li
 
 
 def build_weekly_plan(weaknesses: list[str], weakness_ranking: list[str] | None = None) -> list[str]:
+    # 점수 5.5 미만일 때만 학습계획 반환, 아니면 빈 리스트 (더 엄격하게)
+    if weaknesses and ("점수" in weaknesses[0] or "score" in weaknesses[0] or "band" in weaknesses[0]):
+        try:
+            score = float(re.findall(r"[0-9.]+", weaknesses[0])[0])
+            if score >= 5.5:
+                return []
+        except Exception:
+            pass
     primary = weaknesses[0] if weaknesses else "문법 정확성"
     ranking = weakness_ranking or []
     rank_hint = ranking[0] if ranking else "run_on"
     return [
-        f"월: {primary} 관련 약점 문장 10개 교정",
-        "화: Task 유형별 템플릿 2세트 암기 + 변형 연습",
-        "수: 25분 타이머 실전 작성 1회",
-        "목: 첨삭 결과로 패러프레이징 15개 재작성",
-        f"금: 상위 약점({rank_hint}) 집중 드릴 20문장",
-        "토: 전체 에세이 1편 재작성 후 비교",
-        "일: 약점 상위 2개만 집중 복습",
+        f"월: {primary} 관련 약점 문장 15개 교정",
+        "화: Task 유형별 템플릿 3세트 암기 + 변형 연습",
+        "수: 25분 타이머 실전 작성 2회",
+        "목: 첨삭 결과로 패러프레이징 20개 재작성",
+        f"금: 상위 약점({rank_hint}) 집중 드릴 30문장",
+        "토: 전체 에세이 2편 재작성 후 비교",
+        "일: 약점 상위 3개만 집중 복습",
     ]
 def template_coach(prompt_type: str) -> dict:
     if prompt_type == "email":

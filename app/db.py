@@ -92,6 +92,7 @@ def list_recent(limit: int = 20) -> list[dict[str, Any]]:
                 "estimated_score_0_5": score_0_5,
                 "score_band_1_6": score_band,
                 "estimated_score_30": parsed.get("estimated_score_30", 0),
+                "is_legacy": parsed.get("engine") is None,
             }
         )
     return items

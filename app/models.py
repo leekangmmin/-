@@ -209,10 +209,32 @@ class RiskCheckResponse(BaseModel):
     checklist: PreSubmitChecklist
 
 
+class EngineInfo(BaseModel):
+    """평가 재현성을 위한 완전한 버전 스탬프.
+
+    과거 기록과의 비교, 캘리브레이션 적용 여부 판단, AI/휴리스틱 채점 구분에
+    사용된다. 값이 실제로 존재하지 않는 경우(예: 캘리브레이션 미적용)
+    빈 문자열이 아니라 "not-applicable"/"uncalibrated" 같이 명시적으로 표기한다.
+    """
+
+    exam_spec_version: str
+    rubric_version: str
+    scoring_engine_version: str
+    grammar_rules_version: str
+    result_schema_version: str
+    prompt_version: str
+    provider: str
+    model: str
+    model_identifier: str
+    calibration_version: str
+
+
 class EvaluationResult(BaseModel):
     estimated_score_0_5: float
     estimated_score_30: int
     score_band_1_6: float
+    # 과거 기록(엔진 버전 스탬프 도입 이전)과의 호환을 위해 optional
+    engine: Optional[EngineInfo] = None
     score_profile: ScoreBandProfile
     ai_mode: Literal["local", "ai"]
     ai_provider: Literal["none", "local", "openai", "claude", "gemini"]
@@ -268,6 +290,9 @@ class SubmissionHistoryItem(BaseModel):
     estimated_score_0_5: float
     score_band_1_6: float
     estimated_score_30: int
+    # v2.0.0(engine 스탬프 도입) 이전 레코드는 True. 서로 다른 엔진 버전의
+    # 점수를 UI에서 동일 조건처럼 단순 비교하지 않도록 구분하는 데 사용한다.
+    is_legacy: bool = True
 
 
 class SubmissionHistoryResponse(BaseModel):
