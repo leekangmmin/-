@@ -1,9 +1,27 @@
+
 from __future__ import annotations
 
-from datetime import UTC, datetime
+# Python 3.11 이상만 지원
+import sys
+if sys.version_info < (3, 11):
+    print("\n[ERROR] Python 3.11 이상이 필요합니다.\nhttps://www.python.org/downloads/ 에서 최신 버전을 설치하세요.\n")
+    sys.exit(1)
+
+import os
+import sys
+from datetime import datetime, timezone, tzinfo, timedelta
+# Python 3.11 이상: datetime.UTC, 이하: 수동 UTC tzinfo
+try:
+    from datetime import UTC  # type: ignore
+except ImportError:
+    class UTC(tzinfo):
+        def utcoffset(self, dt): return timedelta(0)
+        def tzname(self, dt): return "UTC"
+        def dst(self, dt): return timedelta(0)
+    UTC = UTC()
 from pathlib import Path
 import textwrap
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -96,7 +114,20 @@ from app.models import (
 )
 from app.ai_mode import ai_enabled, ai_enhance, ai_runtime_config
 from app.db import get_setting, set_setting
-from app.scorer import analyze_essay, grammar_cap_status, score_essay
+from app.models import EngineInfo
+from app.scorer import analyze_essay, grammar_cap_status, score_essay, score_essay_detailed
+from app.versions import (
+    CALIBRATION_VERSION,
+    EXAM_SPEC_VERSION,
+    GRAMMAR_RULES_VERSION,
+    RESULT_SCHEMA_VERSION,
+    RUBRIC_VERSION,
+    SCORING_ENGINE_VERSION,
+    SCORING_MODEL,
+    SCORING_MODEL_IDENTIFIER,
+    SCORING_PROMPT_VERSION,
+    SCORING_PROVIDER,
+)
 from app.vocab_analysis import analyze_vocabulary
 
 app = FastAPI(title="TOEFL Writing Evaluator", version="1.0.0")
@@ -144,9 +175,20 @@ def _ai_public_config() -> AIConfigResponse:
         has_gemini_key=bool(str(runtime.get("gemini_api_key", "")).strip()),
     )
 
+# 로컬 전용 앱 — 로컬 오리진만 허용한다.
+# 패키지 앱은 8000번 고정(native_shell.py), 개발/프리뷰는 포트가 매번 달라질 수 있어
+# TOEFL_EXTRA_ORIGINS 환경변수로 추가 오리진을 등록할 수 있게 한다.
+# (운영 배포 시에는 이 값을 설정하지 않는 것이 기본값이며 안전하다.)
+_DEFAULT_ORIGINS = [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+]
+_extra_origins = [
+    o.strip() for o in os.getenv("TOEFL_EXTRA_ORIGINS", "").split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_DEFAULT_ORIGINS + _extra_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -223,10 +265,29 @@ def test_ai_connection() -> dict[str, str | bool]:
 
 @app.post("/api/evaluate", response_model=EvaluateResponse)
 def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
+    # 입력 검증은 모든 분석 이전에 수행한다.
+    if len(payload.essay_text.split()) < 60:
+        raise HTTPException(
+            status_code=400,
+            detail="Essay is too short. Please write at least 60 words.",
+        )
+
     prompt_type = cast(PromptType, payload.prompt_type or detect_prompt_type(payload.essay_text))
-    dimensions, total_score = score_essay(payload.essay_text, prompt_type)
-    feedback = build_feedback(payload.essay_text, prompt_type, total_score)
+    # 양자화(0.5 단위 반올림) 경계 분석을 위해 상세 버전을 사용한다. 반환되는
+    # 표시 점수(total_score) 자체는 score_essay()와 완전히 동일 — 공식은 그대로다.
+    scoring_breakdown = score_essay_detailed(payload.essay_text, prompt_type)
+    dimensions, total_score = scoring_breakdown.dimensions, scoring_breakdown.total_0_5
     prompt_fit_data = evaluate_prompt_fit(payload.prompt_text, payload.essay_text)
+
+    # prompt-fit 감점은 파생 계산(피드백/시뮬레이터/프로젝션) 이전에 적용해
+    # 표시 점수와 모든 파생 수치가 같은 점수를 기준으로 하도록 한다.
+    if payload.prompt_text.strip():
+        if prompt_fit_data["score"] < 2.5:
+            total_score = max(0.0, total_score - 1.0)
+        elif prompt_fit_data["score"] < 3.0:
+            total_score = max(0.0, total_score - 0.5)
+
+    feedback = build_feedback(payload.essay_text, prompt_type, total_score)
     claim_map_data = map_claim_evidence(payload.essay_text)
     grammar_stats_data = grammar_error_stats(payload.essay_text)
     target_score_0_5 = min(5.0, max(0.0, payload.target_score_0_5))
@@ -281,19 +342,6 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
     auto_rewrite = apply_corrections_to_essay(payload.essay_text, grammar_corrections_data)
     revision_diff = build_revision_diff(payload.essay_text, auto_rewrite)
 
-    # Only apply prompt-fit adjustment when a real prompt was provided
-    if payload.prompt_text.strip():
-        if prompt_fit_data["score"] < 2.5:
-            total_score = max(0.0, total_score - 1.0)
-        elif prompt_fit_data["score"] < 3.0:
-            total_score = max(0.0, total_score - 0.5)
-
-    if len(payload.essay_text.split()) < 60:
-        raise HTTPException(
-            status_code=400,
-            detail="Essay is too short. Please write at least 60 words.",
-        )
-
     estimated_30 = int(round((total_score / 5.0) * 30))
     score_band_1_6 = _to_band_1_6(total_score)
     score_profile = _band_profile(score_band_1_6)
@@ -326,6 +374,18 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         estimated_score_0_5=total_score,
         estimated_score_30=estimated_30,
         score_band_1_6=score_band_1_6,
+        engine=EngineInfo(
+            exam_spec_version=EXAM_SPEC_VERSION,
+            rubric_version=RUBRIC_VERSION,
+            scoring_engine_version=SCORING_ENGINE_VERSION,
+            grammar_rules_version=GRAMMAR_RULES_VERSION,
+            result_schema_version=RESULT_SCHEMA_VERSION,
+            prompt_version=SCORING_PROMPT_VERSION,
+            provider=SCORING_PROVIDER,
+            model=SCORING_MODEL,
+            model_identifier=SCORING_MODEL_IDENTIFIER,
+            calibration_version=CALIBRATION_VERSION,
+        ),
         score_profile=score_profile_obj,
         ai_mode=ai_mode,
         ai_provider=ai_provider,
@@ -415,6 +475,16 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         "estimated_score_0_5": result.estimated_score_0_5,
         "estimated_score_30": result.estimated_score_30,
         "score_band_1_6": result.score_band_1_6,
+        "engine": result.engine.model_dump() if result.engine else None,
+        # 점수공식 변경 금지 게이트용 진단 데이터 — 사용자에게 노출되지 않는 내부 저장.
+        # 전문가 데이터 확보 후 반올림 경계 구간 오차 분석에 사용한다.
+        "scoring_quantization": {
+            "pre_round_raw_score": scoring_breakdown.pre_round_raw_score,
+            "rounded_display_score": scoring_breakdown.total_0_5,
+            "distance_to_rounding_boundary": scoring_breakdown.distance_to_rounding_boundary,
+            "component_scores": scoring_breakdown.component_scores,
+            "scoring_formula_version": scoring_breakdown.scoring_formula_version,
+        },
         "score_profile": result.score_profile.model_dump(),
         "ai_mode": result.ai_mode,
         "ai_provider": result.ai_provider,
@@ -514,6 +584,62 @@ def dashboard(request: Request, limit: int = 200) -> DashboardResponse:
         ],
         recommended_focus=payload["recommended_focus"],
     )
+
+
+def _require_local_session(request: Request) -> None:
+    """일반 로컬 기능(예: /api/dashboard)에 쓰는 완화된 검사. CORS와 달리
+    실제 접근 제어이지만, 관리자 전용 엔드포인트에는 이것만으로 불충분하므로
+    _require_local_admin_session()을 대신 써라."""
+    host = (request.client.host if request.client else "")
+    if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        raise HTTPException(status_code=403, detail="Available only from local app session")
+
+
+def _require_local_admin_session(request: Request) -> None:
+    """관리자 전용 엔드포인트(/api/expert-data/*, /api/shadow/*) 접근 제어.
+
+    CORS는 접근 통제가 아니다 — 서버 측에서 다음 두 가지를 모두 요구한다.
+    1) 명시적 feature flag(TOEFL_ADMIN_API_ENABLED=1) — 기본값은 비활성화이며,
+       운영 배포에서 이 값을 설정하지 않으면 라우트가 아예 존재하지 않는 것처럼
+       404를 반환한다 (403이 아니라 404로 응답해 엔드포인트 존재 자체를 숨긴다).
+    2) 루프백 인터페이스에서의 접근 — request.client.host는 uvicorn이 실제 TCP
+       피어 주소로 채우는 값이며(--proxy-headers 미사용 전제), X-Forwarded-For
+       같은 클라이언트 조작 가능 헤더는 절대 신뢰하지 않는다. 이 함수는 그런
+       헤더를 읽지 않는다.
+    """
+    if os.getenv("TOEFL_ADMIN_API_ENABLED", "0").strip() != "1":
+        raise HTTPException(status_code=404, detail="Not found")
+    host = (request.client.host if request.client else "")
+    if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        raise HTTPException(status_code=403, detail="Available only from local app session")
+
+
+# ── 전문가 데이터 (관리자 전용) ─────────────────────────────────────────────
+# 기본 비활성화. TOEFL_ADMIN_API_ENABLED=1 환경변수로만 켤 수 있다.
+# 일반 사용자 화면에는 노출하지 않는다. 실제 import는 스크립트/테스트에서 수행하고,
+# 이 엔드포인트는 현재 상태를 읽기 전용으로 확인하는 용도다.
+# 응답에는 집계 수치만 포함되며 답안 원문·개인정보는 절대 포함하지 않는다
+# (tests/test_admin_api_security.py 로 회귀 검증).
+@app.get("/api/expert-data/summary")
+def expert_data_summary(request: Request) -> dict[str, Any]:
+    _require_local_admin_session(request)
+    import app.expert_data as expert_data
+
+    return {
+        "dataset_split_counts": expert_data.dataset_split_summary(),
+        "import_history": expert_data.list_import_history(),
+    }
+
+
+# ── AI shadow mode 비교 리포트 (관리자 전용) ────────────────────────────────
+# 프로덕션 채점 경로는 이 데이터를 전혀 사용하지 않는다. 순수 관측용.
+# 기본 비활성화. TOEFL_ADMIN_API_ENABLED=1 환경변수로만 켤 수 있다.
+@app.get("/api/shadow/summary")
+def shadow_summary(request: Request) -> dict[str, Any]:
+    _require_local_admin_session(request)
+    from app.shadow_mode import summarize_comparisons
+
+    return summarize_comparisons()
 
 
 @app.get("/api/report/{submission_id}.pdf")
