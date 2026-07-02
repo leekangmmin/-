@@ -7,6 +7,7 @@ data/*.db
 data/app.log
 data/app.pid
 data/reports/
+data/real_llm_injection_results.json
 dist_macos/
 dist_windows/
 NativeMacApp/.build/

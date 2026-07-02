@@ -277,6 +277,22 @@ def run_shadow_comparison(
     return report
 
 
+def already_processed_submission_ids(provider: str, model: str) -> set[int]:
+    """같은 provider/model로 이미 shadow 비교를 실행한 historical_submission_id 집합을 반환한다.
+
+    live validation runner가 동일 답안을 중복 호출(중복 비용)하지 않도록
+    idempotency 확인에 사용한다.
+    """
+    init_shadow_db()
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT historical_submission_id FROM shadow_comparisons "
+            "WHERE provider = ? AND model = ? AND historical_submission_id IS NOT NULL",
+            (provider, model),
+        ).fetchall()
+    return {int(r["historical_submission_id"]) for r in rows}
+
+
 def summarize_comparisons(limit: int = 500) -> dict[str, Any]:
     init_shadow_db()
     with _conn() as conn:
