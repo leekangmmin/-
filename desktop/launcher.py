@@ -7,6 +7,7 @@ in-process 스레드) → health check 대기 → 네이티브 웹뷰 창 → �
 
 from __future__ import annotations
 
+import os
 import signal
 import subprocess
 import sys
@@ -53,10 +54,19 @@ def main() -> int:
     # 보조 안전망이다. 두 경로 모두 결국 이 프로세스 자체가 종료되므로,
     # in-process 스레드 구조상 별도 자식 프로세스가 남는 고아 프로세스 문제는
     # 애초에 발생하지 않는다 — 이 핸들러는 lock 파일 정리를 앞당길 뿐이다.
+    #
+    # 정리(서버 종료·lock 해제)를 먼저 끝낸 뒤 os._exit(0)으로 즉시 종료한다.
+    # sys.exit(0)은 SystemExit를 발생시켜 Python 정상 종료(Py_Finalize)를
+    # 트리거하는데, 이때 pywebview의 네이티브 Cocoa 스레드가 아직 살아있으면
+    # 인터프리터 파이널라이즈와 충돌해 SIGABRT(exit=-6)로 죽을 수 있다.
+    # 필요한 정리를 이미 마쳤으므로, 파이널라이저를 건너뛰고 exit code 0으로
+    # 곧장 나가는 os._exit(0)이 신호 핸들러에서 가장 안전한 종료 방식이다.
     def _handle_termination_signal(signum: int, _frame: object) -> None:
-        managed.shutdown()
-        lock.release()
-        sys.exit(0)
+        try:
+            managed.shutdown()
+            lock.release()
+        finally:
+            os._exit(0)
 
     signal.signal(signal.SIGTERM, _handle_termination_signal)
     signal.signal(signal.SIGINT, _handle_termination_signal)

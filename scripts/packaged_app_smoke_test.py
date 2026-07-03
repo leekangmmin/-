@@ -156,6 +156,10 @@ def run_smoke_test(app_bundle: Path) -> None:
             print("[6/6] 재실행 종료")
             proc2.send_signal(signal.SIGTERM)
             proc2.wait(timeout=10)
+            assert proc2.returncode == 0, (
+                f"재실행 종료가 clean exit(0)이 아님 (exit={proc2.returncode}) — "
+                "신호 핸들러가 Py_Finalize와 네이티브 스레드 충돌로 SIGABRT를 낼 수 있음"
+            )
             print(f"    OK: 프로세스 종료 (exit={proc2.returncode})")
         finally:
             if proc2.poll() is None:
