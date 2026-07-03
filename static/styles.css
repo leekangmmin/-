@@ -876,6 +876,110 @@ textarea:focus, input:focus, select:focus {
   .section-body { padding: 0 var(--sp-4) var(--sp-5); }
 }
 
+/* ── 온보딩 다이얼로그 ─────────────────────────────────────────────── */
+.onboarding-dialog {
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: var(--sp-8);
+  max-width: 480px;
+  width: calc(100vw - 48px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+.onboarding-dialog::backdrop { background: rgba(25, 31, 40, 0.45); }
+
+.onboarding-dialog h2 {
+  font-size: var(--fs-h2);
+  margin: 0 0 var(--sp-5);
+}
+
+.onboarding-steps {
+  list-style: none;
+  counter-reset: onboarding;
+  padding: 0;
+  margin: 0 0 var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.onboarding-steps li {
+  counter-increment: onboarding;
+  padding-left: 44px;
+  position: relative;
+}
+
+.onboarding-steps li::before {
+  content: counter(onboarding);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-small);
+}
+
+.onboarding-steps strong { display: block; margin-bottom: var(--sp-1); }
+.onboarding-steps p { margin: 0; font-size: var(--fs-small); color: var(--color-text-sub); }
+.onboarding-actions { display: flex; justify-content: flex-end; }
+
+/* ── 데이터 관리 (백업·복원·삭제) ──────────────────────────────────── */
+.backup-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--color-surface-sub);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-small);
+}
+
+.btn.danger {
+  background: var(--color-error-soft);
+  color: var(--color-error);
+  border: 1px solid transparent;
+}
+.btn.danger:hover { background: var(--color-error); color: #fff; }
+
+.danger-zone-title { color: var(--color-error); }
+
+.delete-confirm {
+  background: var(--color-error-soft);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  margin-top: var(--sp-3);
+}
+.delete-confirm.hidden { display: none; }
+.delete-confirm input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+/* ── 기록 행 액션 버튼 ─────────────────────────────────────────────── */
+.history-actions { display: inline-flex; gap: var(--sp-1); margin-left: var(--sp-2); }
+
+/* ── Build a Sentence 설명 ─────────────────────────────────────────── */
+.bas-explanation {
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3);
+  font-size: var(--fs-small);
+  color: var(--color-text-sub);
+  margin: 0;
+}
+.bas-explanation.hidden { display: none; }
+
 /* ── 접근성: 모션 최소화 ───────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

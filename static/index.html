@@ -3,11 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>토플 라이팅 채점기 — 연습용 AI 평가</title>
+  <title>토플 라이팅 채점기 — 연습용 평가</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
   <main class="layout">
+
+    <!-- ── 최초 실행 안내 (온보딩) ───────────────────────────────────── -->
+    <dialog id="onboardingDialog" class="onboarding-dialog" aria-labelledby="onboardingTitle">
+      <h2 id="onboardingTitle">토플 라이팅 연습, 이렇게 써요</h2>
+      <ol class="onboarding-steps">
+        <li>
+          <strong>답안을 붙여넣고 채점하기를 누르세요</strong>
+          <p>이메일·학술 토론 유형은 자동으로 구분돼요. 문제 지문을 함께 넣으면 주제 적합성까지 봐드려요.</p>
+        </li>
+        <li>
+          <strong>인터넷·AI 연결 없이 바로 쓸 수 있어요</strong>
+          <p>문법·어휘·구조 기반의 기본 분석으로 채점해요. 점수는 연습용 예상치이며 공식 TOEFL 점수가 아니에요.</p>
+        </li>
+        <li>
+          <strong>모든 기록은 이 기기에만 저장돼요</strong>
+          <p>답안과 점수 기록은 외부로 전송되지 않아요. 설정에서 언제든 백업하고 복원할 수 있어요.</p>
+        </li>
+      </ol>
+      <div class="onboarding-actions">
+        <button id="onboardingStartBtn" class="btn primary" autofocus>시작하기</button>
+      </div>
+    </dialog>
 
     <!-- ── 헤더 ─────────────────────────────────────────────────────── -->
     <header class="hero">
@@ -291,13 +313,14 @@
         <button id="basRefreshBtn" class="btn ghost sm">새로고침</button>
       </div>
       <p class="status-highlight">자체 제작 연습 문제 · ETS 공식 문항이 아닙니다</p>
-      <p class="muted small">API나 인터넷 연결 없이도 사용할 수 있어요. 조각을 순서대로 골라 올바른 문장을 완성해 보세요.</p>
+      <p class="muted small">조각을 순서대로 골라 올바른 문장을 완성해 보세요. 인터넷 연결 없이도 쓸 수 있어요.</p>
 
       <div class="bas-picker-row">
         <label class="inline-label" for="basItemSelect">문제 선택
           <select id="basItemSelect"></select>
         </label>
         <button id="basStartBtn" class="btn primary sm">문제 시작</button>
+        <span id="basProgress" class="muted small" aria-live="polite"></span>
       </div>
 
       <div id="basPlayArea" class="bas-play-area hidden">
@@ -322,10 +345,12 @@
         <div class="bas-actions">
           <button id="basSubmitBtn" class="btn primary sm">제출</button>
           <button id="basResetBtn" class="btn ghost sm">다시 시도</button>
+          <button id="basNextBtn" class="btn ghost sm hidden">다음 문제</button>
           <span id="basAttemptInfo" class="muted small"></span>
         </div>
 
         <div id="basFeedback" class="bas-feedback hidden" role="status"></div>
+        <p id="basExplanation" class="bas-explanation hidden"></p>
       </div>
     </section>
 
@@ -413,8 +438,51 @@
           <ul class="status-list">
             <li>작성한 답안은 이 기기에만 저장돼요. 별도로 활성화하지 않는 한 외부로 전송되지 않아요.</li>
             <li>데이터 저장 위치: 이 기기의 사용자 데이터 폴더 (앱을 지워도 기록은 남아요)</li>
-            <li>기록 삭제·백업·복원은 향후 이 화면에서 지원할 예정이에요.</li>
           </ul>
+
+          <h3 class="card-subtitle">기타</h3>
+          <div class="btn-row">
+            <button id="replayOnboardingBtn" class="btn ghost sm">처음 안내 다시 보기</button>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ── 데이터 관리 (백업·복원·삭제) ─────────────────────────────── -->
+    <section class="card config-card">
+      <details id="dataManageDetails">
+        <summary>
+          <span>백업 및 데이터 관리</span>
+          <span class="muted small">기록을 안전하게 보관하고 되돌릴 수 있어요</span>
+        </summary>
+        <div class="config-body">
+          <h3 class="card-subtitle">백업</h3>
+          <p class="muted small">답안 기록, 문장 조립 기록, 작성 중 답안, 설정이 백업에 담겨요. AI 연결용 키는 담기지 않아요.</p>
+          <div class="btn-row">
+            <button id="createBackupBtn" class="btn primary sm">지금 백업 만들기</button>
+            <span id="backupStatus" class="muted small" role="status" aria-live="polite"></span>
+          </div>
+          <p class="muted small">백업 저장 위치: <code id="backupsDirPath">-</code></p>
+
+          <h3 class="card-subtitle">보관 중인 백업</h3>
+          <div id="backupList" class="backup-list">
+            <p class="muted small">아직 만든 백업이 없어요.</p>
+          </div>
+
+          <h3 class="card-subtitle danger-zone-title">전체 데이터 삭제</h3>
+          <p class="muted small">모든 답안 기록·연습 기록·설정이 지워져요. 삭제 직전에 자동 백업이 만들어져서 되돌릴 수 있어요.</p>
+          <div class="btn-row">
+            <button id="deleteAllBtn" class="btn danger sm">전체 데이터 삭제…</button>
+          </div>
+          <div id="deleteAllConfirm" class="delete-confirm hidden">
+            <p><strong>정말 모든 데이터를 삭제할까요?</strong> 확인을 위해 아래에 <em>모두 삭제</em>라고 입력해 주세요.</p>
+            <div class="btn-row">
+              <input id="deleteAllPhrase" type="text" placeholder="모두 삭제" aria-label="삭제 확인 문구 입력" />
+              <button id="deleteAllExecBtn" class="btn danger sm">삭제 실행</button>
+              <button id="deleteAllCancelBtn" class="btn ghost sm">취소</button>
+            </div>
+            <p id="deleteAllStatus" class="muted small" role="status" aria-live="polite"></p>
+          </div>
         </div>
       </details>
     </section>

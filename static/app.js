@@ -134,23 +134,62 @@ function updateLiveStats() {
   setText(targetHintEl, "권장 " + target + "+");
 }
 
+// 서버측 draft 동기화 — localStorage와 별개로 DB에도 보존해서
+// 웹뷰 저장소가 비워지거나 강제 종료돼도 작성 중 답안을 복구한다.
+let serverDraftTimer = null;
+function scheduleServerDraftSync() {
+  if (serverDraftTimer) clearTimeout(serverDraftTimer);
+  serverDraftTimer = setTimeout(async function() {
+    try {
+      await fetch("/api/draft", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          essay_text: essayTextEl.value,
+          prompt_text: promptTextEl ? promptTextEl.value : "",
+        }),
+      });
+      setText(draftStatusEl, "자동저장 완료");
+    } catch (_) {
+      setText(draftStatusEl, "임시 보관됨 (이 창에만)");
+    }
+  }, 800);
+}
+
 function saveDraft() {
   try {
     localStorage.setItem(DRAFT_KEY, essayTextEl.value);
     if (promptTextEl) localStorage.setItem(PROMPT_DRAFT_KEY, promptTextEl.value);
-    setText(draftStatusEl, "자동저장 완료");
+    setText(draftStatusEl, "저장 중…");
   } catch (_) {
-    setText(draftStatusEl, "자동저장 실패");
+    setText(draftStatusEl, "임시 보관됨 (이 창에만)");
   }
+  scheduleServerDraftSync();
 }
 
-function loadDraft() {
+async function loadDraft() {
+  // 서버 draft를 우선한다 — 강제 종료/저장소 초기화에도 살아남는 사본이다.
+  let serverDraft = null;
+  try {
+    const res = await fetch("/api/draft");
+    if (res.ok) serverDraft = (await res.json()).draft;
+  } catch (_) { /* 서버 draft 조회 실패 시 localStorage로 폴백 */ }
+
+  if (serverDraft && (serverDraft.essay_text || serverDraft.prompt_text)) {
+    if (promptTextEl && serverDraft.prompt_text) promptTextEl.value = serverDraft.prompt_text;
+    if (serverDraft.essay_text) essayTextEl.value = serverDraft.essay_text;
+    setText(draftStatusEl, "작성하던 답안을 불러왔어요");
+    updateDetectBadge(essayTextEl.value);
+    updateLiveStats();
+    return;
+  }
+
   const draft = localStorage.getItem(DRAFT_KEY);
   const promptDraft = localStorage.getItem(PROMPT_DRAFT_KEY);
   if (promptTextEl && promptDraft) promptTextEl.value = promptDraft;
   if (!draft) return;
   essayTextEl.value = draft;
-  setText(draftStatusEl, "자동저장 불러옴");
+  setText(draftStatusEl, "작성하던 답안을 불러왔어요");
 }
 
 function savePromptLibrary() {
@@ -222,6 +261,9 @@ let basAnswer = [];    // [{key, text}] 사용자가 배열한 순서
 let basStartedAt = 0;
 let basKeyCounter = 0;
 
+const basDifficultyLabel = { easy: "쉬움", medium: "보통", hard: "어려움" };
+let basItemOrder = [];  // 문제 순서 (다음 문제 버튼용)
+
 async function loadBasItemOptions() {
   if (!basItemSelect) return;
   try {
@@ -229,15 +271,39 @@ async function loadBasItemOptions() {
     if (!res.ok) throw new Error();
     const data = await res.json();
     basItemSelect.innerHTML = "";
-    for (const item of data.items) {
+    basItemOrder = data.items.map(function(i) { return i.item_id; });
+    data.items.forEach(function(item, idx) {
       const opt = document.createElement("option");
       opt.value = item.item_id;
-      opt.textContent = `${item.item_id} (조각 ${item.fragment_count}개)`;
+      const diff = basDifficultyLabel[item.difficulty] || item.difficulty;
+      const tag = item.grammar_tag ? " · " + item.grammar_tag : "";
+      opt.textContent = (idx + 1) + "번 (" + diff + tag + ")";
       basItemSelect.appendChild(opt);
-    }
+    });
+    updateBasProgress();
   } catch (_) {
-    if (basItemSelect) basItemSelect.innerHTML = "<option>문제를 불러오지 못했습니다</option>";
+    if (basItemSelect) basItemSelect.innerHTML = "<option>문제를 불러오지 못했어요</option>";
   }
+}
+
+// 푼 문제(정답 처리된 item_id)를 localStorage로 추적해 진행 상황을 표시한다
+const BAS_SOLVED_KEY = "toefl_bas_solved_v1";
+function getBasSolved() {
+  try { return new Set(JSON.parse(localStorage.getItem(BAS_SOLVED_KEY) || "[]")); }
+  catch (_) { return new Set(); }
+}
+function markBasSolved(itemId) {
+  const solved = getBasSolved();
+  solved.add(itemId);
+  try { localStorage.setItem(BAS_SOLVED_KEY, JSON.stringify(Array.from(solved))); } catch (_) {}
+  updateBasProgress();
+}
+function updateBasProgress() {
+  const el = document.getElementById("basProgress");
+  if (!el || !basItemOrder.length) return;
+  const solved = getBasSolved();
+  const count = basItemOrder.filter(function(id) { return solved.has(id); }).length;
+  el.textContent = "완료 " + count + " / " + basItemOrder.length;
 }
 
 function renderBasPool() {
@@ -337,6 +403,10 @@ async function startBasItem() {
     if (basDirectInputEl) basDirectInputEl.value = "";
     if (basAttemptInfoEl) basAttemptInfoEl.textContent = "";
     if (basFeedbackEl) { basFeedbackEl.className = "bas-feedback hidden"; basFeedbackEl.textContent = ""; }
+    const explEl = document.getElementById("basExplanation");
+    if (explEl) explEl.classList.add("hidden");
+    const nextBtn = document.getElementById("basNextBtn");
+    if (nextBtn) nextBtn.classList.add("hidden");
     if (basPlayArea) basPlayArea.classList.remove("hidden");
     renderBasPool();
     renderBasAnswer();
@@ -377,18 +447,223 @@ async function submitBasAnswer() {
       }
       basFeedbackEl.textContent = text;
     }
+    const explEl = document.getElementById("basExplanation");
+    if (explEl) {
+      if (data.explanation) {
+        explEl.textContent = "💡 " + data.explanation;
+        explEl.classList.remove("hidden");
+      } else {
+        explEl.classList.add("hidden");
+      }
+    }
+    if (data.is_correct) {
+      markBasSolved(basCurrentItemId);
+      const nextBtn = document.getElementById("basNextBtn");
+      if (nextBtn) nextBtn.classList.remove("hidden");
+    }
   } catch (_) {
     if (basFeedbackEl) {
       basFeedbackEl.className = "bas-feedback incorrect";
-      basFeedbackEl.textContent = "채점 요청에 실패했습니다. 다시 시도해 주세요.";
+      basFeedbackEl.textContent = "채점 요청에 실패했어요. 답안 배열은 그대로 남아 있으니 다시 제출해 보세요.";
     }
   }
+}
+
+function goToNextBasItem() {
+  if (!basItemSelect || !basItemOrder.length || !basCurrentItemId) return;
+  const idx = basItemOrder.indexOf(basCurrentItemId);
+  const nextId = basItemOrder[(idx + 1) % basItemOrder.length];
+  basItemSelect.value = nextId;
+  const nextBtn = document.getElementById("basNextBtn");
+  if (nextBtn) nextBtn.classList.add("hidden");
+  startBasItem();
 }
 
 if (basStartBtn) basStartBtn.addEventListener("click", startBasItem);
 if (basRefreshBtn) basRefreshBtn.addEventListener("click", loadBasItemOptions);
 if (basSubmitBtn) basSubmitBtn.addEventListener("click", submitBasAnswer);
 if (basResetBtn) basResetBtn.addEventListener("click", startBasItem);
+const basNextBtnEl = document.getElementById("basNextBtn");
+if (basNextBtnEl) basNextBtnEl.addEventListener("click", goToNextBasItem);
+
+/* ── 온보딩 (최초 실행 안내) ─────────────────────────────────────────── */
+async function initOnboarding() {
+  const dialog = document.getElementById("onboardingDialog");
+  if (!dialog || typeof dialog.showModal !== "function") return;
+  try {
+    const res = await fetch("/api/onboarding");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.done) dialog.showModal();
+  } catch (_) { /* 상태 조회 실패 시 온보딩을 강제하지 않는다 */ }
+
+  const startBtn = document.getElementById("onboardingStartBtn");
+  if (startBtn) {
+    startBtn.addEventListener("click", async function() {
+      dialog.close();
+      try { await fetch("/api/onboarding/complete", { method: "POST" }); } catch (_) {}
+    });
+  }
+  const replayBtn = document.getElementById("replayOnboardingBtn");
+  if (replayBtn) {
+    replayBtn.addEventListener("click", function() { dialog.showModal(); });
+  }
+}
+
+/* ── 백업·복원·전체 삭제 ─────────────────────────────────────────────── */
+function formatBytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+async function refreshBackupList() {
+  const listEl = document.getElementById("backupList");
+  const dirEl = document.getElementById("backupsDirPath");
+  if (!listEl) return;
+  try {
+    const res = await fetch("/api/backup/list");
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (dirEl) dirEl.textContent = data.backups_dir || "-";
+    listEl.innerHTML = "";
+    if (!data.backups.length) {
+      listEl.innerHTML = '<p class="muted small">아직 만든 백업이 없어요.</p>';
+      return;
+    }
+    data.backups.forEach(function(b) {
+      const row = document.createElement("div");
+      row.className = "backup-row";
+      const when = b.created_at ? new Date(b.created_at).toLocaleString() : "생성일 알 수 없음";
+      const counts = b.record_counts ? " · 기록 " + b.record_counts.submissions + "건" : "";
+      const info = document.createElement("span");
+      info.textContent = when + counts + " · " + formatBytes(b.size_bytes) + (b.app_version ? " · v" + b.app_version : "");
+      row.appendChild(info);
+
+      const restoreBtn = document.createElement("button");
+      restoreBtn.type = "button";
+      restoreBtn.className = "btn ghost sm";
+      restoreBtn.textContent = "복원";
+      restoreBtn.disabled = !b.readable;
+      restoreBtn.addEventListener("click", function() { restoreFromBackup(b.filename); });
+      row.appendChild(restoreBtn);
+
+      listEl.appendChild(row);
+    });
+  } catch (_) {
+    listEl.innerHTML = '<p class="muted small">백업 목록을 불러오지 못했어요.</p>';
+  }
+}
+
+async function createBackup() {
+  const statusEl = document.getElementById("backupStatus");
+  if (statusEl) statusEl.textContent = "백업을 만들고 있어요…";
+  try {
+    const res = await fetch("/api/backup", { method: "POST" });
+    if (!res.ok) throw new Error();
+    const meta = await res.json();
+    if (statusEl) statusEl.textContent = "백업 완료 — 기록 " + meta.record_counts.submissions + "건이 담겼어요.";
+    refreshBackupList();
+  } catch (_) {
+    if (statusEl) statusEl.textContent = "백업을 만들지 못했어요. 저장 공간을 확인하고 다시 시도해 주세요.";
+  }
+}
+
+async function restoreFromBackup(filename) {
+  const statusEl = document.getElementById("backupStatus");
+  try {
+    // 1) 미리보기 — 복원될 기록 수를 사용자에게 보여주고 확인받는다
+    const inspectRes = await fetch("/api/backup/inspect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: filename }),
+    });
+    const inspect = await inspectRes.json();
+    if (!inspectRes.ok) throw new Error(inspect.detail || "백업 파일을 확인하지 못했어요");
+
+    const backupCount = inspect.backup.record_counts.submissions;
+    const currentCount = inspect.current_record_counts.submissions;
+    const ok = window.confirm(
+      "이 백업으로 되돌릴까요?\n\n" +
+      "백업 속 기록: " + backupCount + "건 (" + new Date(inspect.backup.created_at).toLocaleString() + ")\n" +
+      "현재 기록: " + currentCount + "건\n\n" +
+      "복원 전에 현재 데이터가 자동으로 백업되니 안심하세요."
+    );
+    if (!ok) return;
+
+    if (statusEl) statusEl.textContent = "복원하고 있어요…";
+    const res = await fetch("/api/backup/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: filename }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || "복원에 실패했어요");
+    if (statusEl) statusEl.textContent = "복원 완료 — 기록 " + body.record_counts.submissions + "건. 화면을 새로고침해요.";
+    await Promise.all([fetchHistory(), fetchDashboard()]);
+    refreshBackupList();
+  } catch (err) {
+    if (statusEl) statusEl.textContent = "복원하지 못했어요: " + err.message + " — 기존 데이터는 그대로 안전해요.";
+  }
+}
+
+function initDataManagement() {
+  const createBtn = document.getElementById("createBackupBtn");
+  if (createBtn) createBtn.addEventListener("click", createBackup);
+
+  const deleteAllBtn = document.getElementById("deleteAllBtn");
+  const confirmBox = document.getElementById("deleteAllConfirm");
+  const execBtn = document.getElementById("deleteAllExecBtn");
+  const cancelBtn = document.getElementById("deleteAllCancelBtn");
+  const phraseInput = document.getElementById("deleteAllPhrase");
+  const delStatusEl = document.getElementById("deleteAllStatus");
+
+  if (deleteAllBtn && confirmBox) {
+    deleteAllBtn.addEventListener("click", function() {
+      confirmBox.classList.remove("hidden");
+      if (phraseInput) phraseInput.focus();
+    });
+  }
+  if (cancelBtn && confirmBox) {
+    cancelBtn.addEventListener("click", function() {
+      confirmBox.classList.add("hidden");
+      if (phraseInput) phraseInput.value = "";
+      if (delStatusEl) delStatusEl.textContent = "";
+    });
+  }
+  if (execBtn) {
+    execBtn.addEventListener("click", async function() {
+      const phrase = phraseInput ? phraseInput.value.trim() : "";
+      if (delStatusEl) delStatusEl.textContent = "삭제하고 있어요…";
+      try {
+        const res = await fetch("/api/data/delete-all", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm: phrase }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.detail || "삭제하지 못했어요");
+        if (delStatusEl) {
+          delStatusEl.textContent = "삭제 완료. 되돌리려면 백업 목록에서 '" + body.safety_backup + "'을(를) 복원하세요.";
+        }
+        if (phraseInput) phraseInput.value = "";
+        essayTextEl.value = "";
+        await Promise.all([fetchHistory(), fetchDashboard()]);
+        refreshBackupList();
+      } catch (err) {
+        if (delStatusEl) delStatusEl.textContent = err.message;
+      }
+    });
+  }
+
+  // 데이터 관리 섹션을 열 때 백업 목록을 로드한다
+  const details = document.getElementById("dataManageDetails");
+  if (details) {
+    details.addEventListener("toggle", function() {
+      if (details.open) refreshBackupList();
+    });
+  }
+}
 
 async function fetchAppStatus() {
   const modeEl = document.getElementById("statusAnalysisMode");
@@ -1061,10 +1336,43 @@ async function fetchHistory() {
       const div = document.createElement("div");
       div.className = "history-row";
       const typeLabel = row.prompt_type === "email" ? "이메일" : "학술토론";
-      const legacyTag = row.is_legacy ? ' <span class="badge small-badge" title="구버전 엔진으로 채점됨 — 최신 결과와 직접 비교 부정확할 수 있음">구버전</span>' : "";
+      const legacyTag = row.is_legacy ? ' <span class="badge small-badge" title="이전 버전 채점 기준 — 최신 결과와 직접 비교하면 부정확할 수 있어요">이전 기준</span>' : "";
       div.innerHTML =
         "<span>#" + esc(row.id) + " · " + esc(typeLabel) + " · " + esc(new Date(row.created_at).toLocaleString()) + legacyTag + "</span>" +
         "<strong>Band " + esc(row.score_band_1_6.toFixed(1)) + " / 6</strong>";
+
+      const actions = document.createElement("span");
+      actions.className = "history-actions";
+
+      const pdfBtn = document.createElement("button");
+      pdfBtn.type = "button";
+      pdfBtn.className = "btn ghost sm";
+      pdfBtn.textContent = "PDF";
+      pdfBtn.setAttribute("aria-label", "#" + row.id + " 기록 PDF 열기");
+      pdfBtn.addEventListener("click", function() {
+        window.open("/api/report/" + row.id + ".pdf", "_blank");
+      });
+      actions.appendChild(pdfBtn);
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "btn ghost sm";
+      delBtn.textContent = "삭제";
+      delBtn.setAttribute("aria-label", "#" + row.id + " 기록 삭제");
+      delBtn.addEventListener("click", async function() {
+        if (!window.confirm("#" + row.id + " 기록을 삭제할까요? 이 기록만 지워지고 다른 기록은 그대로 남아요.")) return;
+        try {
+          const delRes = await fetch("/api/history/" + row.id, { method: "DELETE" });
+          if (!delRes.ok) throw new Error();
+          fetchHistory();
+          fetchDashboard();
+        } catch (_) {
+          statusText.textContent = "기록 삭제에 실패했어요. 잠시 후 다시 시도해 주세요.";
+        }
+      });
+      actions.appendChild(delBtn);
+      div.appendChild(actions);
+
       historyEl.appendChild(div);
     });
   } catch(e) {
@@ -1110,7 +1418,19 @@ async function evaluateEssay(isExamMode) {
   };
 
   evaluateBtn.disabled = true;
-  statusText.textContent = "채점 중…";
+  // Offline Core의 실제 처리 순서에 맞춘 단계 문구 — 처리가 빨리 끝나면
+  // 그대로 결과가 표시된다 (가짜 진행률/억지 대기 없음).
+  const loadingStages = [
+    "답안 구조를 확인하고 있어요…",
+    "문법과 표현을 분석하고 있어요…",
+    "점수와 개선 방향을 정리하고 있어요…",
+  ];
+  let stageIdx = 0;
+  statusText.textContent = loadingStages[0];
+  const stageTimer = setInterval(function() {
+    stageIdx = Math.min(stageIdx + 1, loadingStages.length - 1);
+    statusText.textContent = loadingStages[stageIdx];
+  }, 700);
 
   try {
     const res = await fetch("/api/evaluate", {
@@ -1203,10 +1523,14 @@ async function evaluateEssay(isExamMode) {
     autoReevalBtn.disabled = !(result.auto_rewrite_essay && result.auto_rewrite_essay.trim());
     downloadPdfBtn.dataset.submissionId = String(data.submission_id);
     statusText.textContent = "채점 완료 (ID: " + data.submission_id + ")";
+    // 채점 완료된 답안의 draft는 정리한다 — 단 화면의 텍스트는 그대로 유지되므로
+    // 사용자가 제출 직전 내용을 잃지 않는다.
+    fetch("/api/draft", { method: "DELETE" }).catch(function() {});
     await Promise.all([fetchHistory(), fetchDashboard()]);
   } catch(err) {
-    statusText.textContent = "오류: " + err.message;
+    statusText.textContent = "채점하지 못했어요: " + err.message + " — 작성한 답안은 그대로 남아 있어요. 다시 시도해 주세요.";
   } finally {
+    clearInterval(stageTimer);
     evaluateBtn.disabled = false;
   }
 }
@@ -1221,7 +1545,8 @@ loadPromptBtn.addEventListener("click", loadPromptLibrary);
 clearDraftBtn.addEventListener("click", function() {
   essayTextEl.value = "";
   localStorage.removeItem(DRAFT_KEY);
-  setText(draftStatusEl, "초안 비움");
+  fetch("/api/draft", { method: "DELETE" }).catch(function() {});
+  setText(draftStatusEl, "비웠어요");
   updateDetectBadge(essayTextEl.value);
   updateLiveStats();
   essayTextEl.focus();
@@ -1269,6 +1594,8 @@ fetchAppStatus();
 loadBasItemOptions();
 loadAiConfig();
 loadDraft();
+initOnboarding();
+initDataManagement();
 updateDetectBadge(essayTextEl.value);
 updateLiveStats();
 window.addEventListener("load", function() {
