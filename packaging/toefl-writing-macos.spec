@@ -94,10 +94,12 @@ coll = COLLECT(
     name=APP_BUNDLE_NAME,
 )
 
+_icon_path = PROJECT_ROOT / "packaging" / "resources" / "app.icns"
+
 app = BUNDLE(
     coll,
     name=f"{APP_BUNDLE_NAME}.app",
-    icon=None,  # 아이콘(.icns) 미준비 — 향후 packaging/resources/app.icns로 교체
+    icon=str(_icon_path) if _icon_path.exists() else None,
     bundle_identifier=BUNDLE_IDENTIFIER,
     info_plist={
         "CFBundleName": APP_BUNDLE_NAME,

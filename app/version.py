@@ -9,7 +9,7 @@ from __future__ import annotations
 
 APP_DISPLAY_NAME = "토플첨삭기 by이강민"
 APP_BUNDLE_NAME = "TOEFL Writing"
-APP_VERSION = "0.5.0"  # Phase 5: internal alpha
-APP_BUILD = "phase5-alpha.1"
+APP_VERSION = "0.6.0"  # Phase 6: internal release candidate
+APP_BUILD = "phase6-rc.1"
 DB_SCHEMA_VERSION = "1.0.0"
 BUNDLE_IDENTIFIER = "com.leekangmin.toeflwriting"
