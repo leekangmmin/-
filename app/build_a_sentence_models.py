@@ -23,6 +23,9 @@ class AllowedAnswer(BaseModel):
     rationale: str = ""  # 왜 이 변형도 정답으로 인정하는지
 
 
+Difficulty = Literal["easy", "medium", "hard"]
+
+
 class BuildASentenceItem(BaseModel):
     item_id: str
     source_fragments: list[str]  # 학생에게 주어지는 어순이 섞인 구성요소
@@ -32,6 +35,10 @@ class BuildASentenceItem(BaseModel):
     case_sensitive: bool = False
     punctuation_policy: PunctuationPolicy = "ignore_terminal"
     contraction_policy: ContractionPolicy = "either_allowed"
+
+    difficulty: Difficulty = "medium"
+    grammar_tag: str = ""       # 예: "어순", "수동태", "관계절"
+    explanation: str = ""       # 왜 이 어순/형태가 정답인지 (제출 후 표시)
 
     rubric_version: str
     provenance: DataSourceRecord
