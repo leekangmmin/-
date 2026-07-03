@@ -203,6 +203,218 @@ function providerLabel(provider) {
   return "ChatGPT";
 }
 
+/* ── Build a Sentence (자체 제작 연습 문제, API/인터넷 불필요) ────────── */
+const basItemSelect   = document.getElementById("basItemSelect");
+const basStartBtn     = document.getElementById("basStartBtn");
+const basRefreshBtn   = document.getElementById("basRefreshBtn");
+const basPlayArea     = document.getElementById("basPlayArea");
+const basAnswerListEl = document.getElementById("basAnswerList");
+const basFragmentPoolEl = document.getElementById("basFragmentPool");
+const basDirectInputEl  = document.getElementById("basDirectInput");
+const basSubmitBtn    = document.getElementById("basSubmitBtn");
+const basResetBtn     = document.getElementById("basResetBtn");
+const basAttemptInfoEl = document.getElementById("basAttemptInfo");
+const basFeedbackEl   = document.getElementById("basFeedback");
+
+let basCurrentItemId = null;
+let basPool = [];      // [{key, text}] 아직 배치하지 않은 조각
+let basAnswer = [];    // [{key, text}] 사용자가 배열한 순서
+let basStartedAt = 0;
+let basKeyCounter = 0;
+
+async function loadBasItemOptions() {
+  if (!basItemSelect) return;
+  try {
+    const res = await fetch("/api/build-a-sentence/items");
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    basItemSelect.innerHTML = "";
+    for (const item of data.items) {
+      const opt = document.createElement("option");
+      opt.value = item.item_id;
+      opt.textContent = `${item.item_id} (조각 ${item.fragment_count}개)`;
+      basItemSelect.appendChild(opt);
+    }
+  } catch (_) {
+    if (basItemSelect) basItemSelect.innerHTML = "<option>문제를 불러오지 못했습니다</option>";
+  }
+}
+
+function renderBasPool() {
+  if (!basFragmentPoolEl) return;
+  basFragmentPoolEl.innerHTML = "";
+  for (const frag of basPool) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "bas-fragment-chip";
+    btn.textContent = frag.text;
+    btn.setAttribute("role", "listitem");
+    btn.addEventListener("click", function() { moveFragmentToAnswer(frag.key); });
+    basFragmentPoolEl.appendChild(btn);
+  }
+}
+
+function renderBasAnswer() {
+  if (!basAnswerListEl) return;
+  basAnswerListEl.innerHTML = "";
+  basAnswer.forEach(function(frag, idx) {
+    const li = document.createElement("li");
+    li.className = "bas-answer-item";
+
+    const span = document.createElement("span");
+    span.className = "bas-fragment-text";
+    span.textContent = frag.text;
+    li.appendChild(span);
+
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.className = "bas-icon-btn";
+    upBtn.textContent = "▲";
+    upBtn.setAttribute("aria-label", "위로 이동");
+    upBtn.disabled = idx === 0;
+    upBtn.addEventListener("click", function() { moveBasAnswerItem(idx, -1); });
+    li.appendChild(upBtn);
+
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.className = "bas-icon-btn";
+    downBtn.textContent = "▼";
+    downBtn.setAttribute("aria-label", "아래로 이동");
+    downBtn.disabled = idx === basAnswer.length - 1;
+    downBtn.addEventListener("click", function() { moveBasAnswerItem(idx, 1); });
+    li.appendChild(downBtn);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "bas-icon-btn";
+    removeBtn.textContent = "✕";
+    removeBtn.setAttribute("aria-label", "제거");
+    removeBtn.addEventListener("click", function() { moveFragmentToPool(frag.key); });
+    li.appendChild(removeBtn);
+
+    basAnswerListEl.appendChild(li);
+  });
+}
+
+function moveFragmentToAnswer(key) {
+  const idx = basPool.findIndex(function(f) { return f.key === key; });
+  if (idx === -1) return;
+  const [frag] = basPool.splice(idx, 1);
+  basAnswer.push(frag);
+  renderBasPool();
+  renderBasAnswer();
+}
+
+function moveFragmentToPool(key) {
+  const idx = basAnswer.findIndex(function(f) { return f.key === key; });
+  if (idx === -1) return;
+  const [frag] = basAnswer.splice(idx, 1);
+  basPool.push(frag);
+  renderBasPool();
+  renderBasAnswer();
+}
+
+function moveBasAnswerItem(idx, direction) {
+  const target = idx + direction;
+  if (target < 0 || target >= basAnswer.length) return;
+  const tmp = basAnswer[idx];
+  basAnswer[idx] = basAnswer[target];
+  basAnswer[target] = tmp;
+  renderBasAnswer();
+}
+
+async function startBasItem() {
+  if (!basItemSelect || !basItemSelect.value) return;
+  const itemId = basItemSelect.value;
+  try {
+    const res = await fetch(`/api/build-a-sentence/items/${encodeURIComponent(itemId)}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    basCurrentItemId = data.item_id;
+    basPool = data.source_fragments.map(function(text) { return { key: ++basKeyCounter, text: text }; });
+    basAnswer = [];
+    basStartedAt = Date.now();
+    if (basDirectInputEl) basDirectInputEl.value = "";
+    if (basAttemptInfoEl) basAttemptInfoEl.textContent = "";
+    if (basFeedbackEl) { basFeedbackEl.className = "bas-feedback hidden"; basFeedbackEl.textContent = ""; }
+    if (basPlayArea) basPlayArea.classList.remove("hidden");
+    renderBasPool();
+    renderBasAnswer();
+  } catch (_) {
+    if (basFeedbackEl) {
+      basFeedbackEl.className = "bas-feedback incorrect";
+      basFeedbackEl.textContent = "문제를 불러오지 못했습니다. 다시 시도해 주세요.";
+    }
+  }
+}
+
+async function submitBasAnswer() {
+  if (!basCurrentItemId) return;
+  const directText = basDirectInputEl ? basDirectInputEl.value.trim() : "";
+  const submissionText = directText || basAnswer.map(function(f) { return f.text; }).join(" ");
+  if (!submissionText) {
+    if (basFeedbackEl) {
+      basFeedbackEl.className = "bas-feedback incorrect";
+      basFeedbackEl.textContent = "조각을 배열하거나 직접 입력한 후 제출해 주세요.";
+    }
+    return;
+  }
+  const timeSpentMs = basStartedAt ? Date.now() - basStartedAt : null;
+  try {
+    const res = await fetch(`/api/build-a-sentence/items/${encodeURIComponent(basCurrentItemId)}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ submission_text: submissionText, time_spent_ms: timeSpentMs }),
+    });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (basAttemptInfoEl) basAttemptInfoEl.textContent = `시도 ${data.attempt_number}회`;
+    if (basFeedbackEl) {
+      basFeedbackEl.className = "bas-feedback " + (data.is_correct ? "correct" : "incorrect");
+      let text = data.feedback;
+      if (!data.is_correct && data.correct_answer) {
+        text += ` (정답 예시: ${data.correct_answer})`;
+      }
+      basFeedbackEl.textContent = text;
+    }
+  } catch (_) {
+    if (basFeedbackEl) {
+      basFeedbackEl.className = "bas-feedback incorrect";
+      basFeedbackEl.textContent = "채점 요청에 실패했습니다. 다시 시도해 주세요.";
+    }
+  }
+}
+
+if (basStartBtn) basStartBtn.addEventListener("click", startBasItem);
+if (basRefreshBtn) basRefreshBtn.addEventListener("click", loadBasItemOptions);
+if (basSubmitBtn) basSubmitBtn.addEventListener("click", submitBasAnswer);
+if (basResetBtn) basResetBtn.addEventListener("click", startBasItem);
+
+async function fetchAppStatus() {
+  const modeEl = document.getElementById("statusAnalysisMode");
+  const shadowEl = document.getElementById("statusShadowState");
+  const versionEl = document.getElementById("statusAppVersion");
+  const schemaEl = document.getElementById("statusSchemaVersion");
+  const summaryEl = document.getElementById("statusSummaryLine");
+  if (!modeEl && !versionEl) return;
+  try {
+    const res = await fetch("/api/health");
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (versionEl) versionEl.textContent = data.app_version || "-";
+    if (schemaEl) schemaEl.textContent = data.db_schema_version || "-";
+    if (shadowEl) shadowEl.textContent = data.shadow_enabled ? "활성 (연구용, 점수 미반영)" : "비활성";
+    if (modeEl) modeEl.textContent = "기본 분석 모드";
+    if (summaryEl) {
+      summaryEl.textContent = data.shadow_enabled
+        ? "기본 분석 모드 · AI 심층 분석 활성(연구용)"
+        : "기본 분석 모드";
+    }
+  } catch (_) {
+    if (summaryEl) summaryEl.textContent = "기본 분석 모드 (상태 확인 실패)";
+  }
+}
+
 async function loadAiConfig() {
   try {
     const res = await fetch("/api/ai/config");
@@ -1053,6 +1265,8 @@ copyAggressiveBtn.addEventListener("click", function() { copyTextSafe(rewriteAgg
 
 fetchHistory();
 fetchDashboard();
+fetchAppStatus();
+loadBasItemOptions();
 loadAiConfig();
 loadDraft();
 updateDetectBadge(essayTextEl.value);

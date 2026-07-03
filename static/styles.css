@@ -726,6 +726,124 @@ textarea:focus, input:focus, select:focus {
 
 .ai-config-actions { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-3); }
 
+.card-subtitle {
+  font-size: var(--fs-small);
+  font-weight: 700;
+  margin: var(--sp-4) 0 var(--sp-2);
+  color: var(--color-text-muted);
+}
+
+.status-highlight {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  background: var(--color-warning-soft, #f0f4ff);
+  border-radius: var(--radius-md, 10px);
+  padding: var(--sp-3);
+  margin: 0 0 var(--sp-2);
+}
+
+.status-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+}
+
+.status-list strong { color: var(--color-text); }
+
+/* ── Build a Sentence ─────────────────────────────────────────────── */
+.bas-picker-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin: var(--sp-2) 0 var(--sp-4);
+}
+
+.bas-play-area { display: flex; flex-direction: column; gap: var(--sp-4); }
+.bas-play-area.hidden { display: none; }
+
+.bas-block { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.bas-answer-list {
+  list-style: decimal;
+  padding-left: var(--sp-5);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-height: 44px;
+}
+
+.bas-answer-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.bas-answer-item .bas-fragment-text { flex: 1; font-weight: 600; }
+
+.bas-icon-btn {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: var(--fs-small);
+  line-height: 1.6;
+}
+
+.bas-icon-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+.bas-fragment-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.bas-fragment-chip {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-2) var(--sp-4);
+  cursor: pointer;
+  font-size: var(--fs-body);
+}
+
+.bas-fragment-chip:hover,
+.bas-fragment-chip:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary-dark);
+  outline: none;
+}
+
+.bas-fallback summary { cursor: pointer; font-size: var(--fs-small); color: var(--color-text-muted); }
+.bas-fallback textarea { width: 100%; margin-top: var(--sp-2); }
+
+.bas-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.bas-feedback {
+  border-radius: var(--radius-md);
+  padding: var(--sp-3);
+  font-size: var(--fs-body);
+}
+
+.bas-feedback.hidden { display: none; }
+.bas-feedback.correct { background: var(--color-success-soft); color: var(--color-success); }
+.bas-feedback.incorrect { background: var(--color-error-soft); color: var(--color-error); }
+
 /* ── 기타 ─────────────────────────────────────────────────────────── */
 .muted { color: var(--color-text-muted); }
 .small { font-size: var(--fs-small); }

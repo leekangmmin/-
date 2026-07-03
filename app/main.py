@@ -62,9 +62,12 @@ from app.advanced import (
     template_coach,
     weakness_dictionary,
 )
-from app.db import get_submission, init_db, list_all_results, list_recent, save_submission
+from app.build_a_sentence_engine import score_submission as score_bas_submission
+from app.build_a_sentence_items import BUILD_A_SENTENCE_ITEMS, BUILD_SENTENCE_ITEMS_VERSION, get_item as get_bas_item
+from app.db import get_submission, init_db, list_all_results, list_recent, save_bas_attempt, save_submission
 from app.env_loader import load_local_env
 from app.feedback import build_feedback
+from app.paths import exports_dir, resource_path, user_data_dir
 from app.models import (
     TargetEta,
     SentenceVariety,
@@ -111,6 +114,11 @@ from app.models import (
     CompareScoreInfo,
     AIConfigRequest,
     AIConfigResponse,
+    BuildASentenceItemDetail,
+    BuildASentenceItemListResponse,
+    BuildASentenceItemSummary,
+    BuildASentenceSubmitRequest,
+    BuildASentenceSubmitResponse,
 )
 from app.ai_mode import ai_enabled, ai_enhance, ai_runtime_config
 from app.db import get_setting, set_setting
@@ -176,8 +184,11 @@ def _ai_public_config() -> AIConfigResponse:
     )
 
 # 로컬 전용 앱 — 로컬 오리진만 허용한다.
-# 패키지 앱은 8000번 고정(native_shell.py), 개발/프리뷰는 포트가 매번 달라질 수 있어
-# TOEFL_EXTRA_ORIGINS 환경변수로 추가 오리진을 등록할 수 있게 한다.
+# 데스크톱 런처(desktop/launcher.py)는 매 실행마다 동적 loopback 포트를 쓰므로
+# 고정 포트를 기본 허용 목록에 넣지 않는다. 웹뷰는 서버와 같은 origin에서
+# 페이지를 로드하므로 CORS 자체가 관여하지 않는다 — 이 목록은 브라우저 기반
+# 개발/프리뷰(고정 포트 8000)에서 크로스 오리진 호출이 필요한 경우를 위한 것이다.
+# TOEFL_EXTRA_ORIGINS 환경변수로 추가 오리진을 등록할 수 있다.
 # (운영 배포 시에는 이 값을 설정하지 않는 것이 기본값이며 안전하다.)
 _DEFAULT_ORIGINS = [
     "http://127.0.0.1:8000",
@@ -197,11 +208,14 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup() -> None:
+    from app.data_migration import migrate_legacy_data_if_needed
+
+    migrate_legacy_data_if_needed()
     init_db()
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR = resource_path("static")
 load_local_env(BASE_DIR)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -212,8 +226,19 @@ def index() -> FileResponse:
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "time": datetime.now(UTC).isoformat()}
+def health() -> dict[str, Any]:
+    from app.shadow_config import load_shadow_config
+    from app.version import APP_VERSION, DB_SCHEMA_VERSION
+
+    return {
+        "status": "ok",
+        "time": datetime.now(UTC).isoformat(),
+        "app_version": APP_VERSION,
+        "db_schema_version": DB_SCHEMA_VERSION,
+        "offline_core_available": True,
+        # shadow 활성 여부만 노출한다 — API 키 존재 여부/모델명 같은 세부 정보는 노출하지 않는다.
+        "shadow_enabled": load_shadow_config().enabled,
+    }
 
 
 @app.get("/api/ai/config", response_model=AIConfigResponse)
@@ -614,6 +639,67 @@ def _require_local_admin_session(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Available only from local app session")
 
 
+# ── Build a Sentence (자체 제작 연습 문제 — API/인터넷 불필요) ──────────────
+# 모든 문항은 app/build_a_sentence_items.py의 SYNTHETIC 문항이며 ETS 공식
+# 문항이 아니다. 채점은 app/build_a_sentence_engine.py의 결정론적 엔진만
+# 사용하며 AI를 호출하지 않는다 (오프라인 코어 기능).
+@app.get("/api/build-a-sentence/items", response_model=BuildASentenceItemListResponse)
+def list_build_a_sentence_items() -> BuildASentenceItemListResponse:
+    return BuildASentenceItemListResponse(
+        items_version=BUILD_SENTENCE_ITEMS_VERSION,
+        items=[
+            BuildASentenceItemSummary(item_id=item.item_id, fragment_count=len(item.source_fragments))
+            for item in BUILD_A_SENTENCE_ITEMS
+        ],
+    )
+
+
+@app.get("/api/build-a-sentence/items/{item_id}", response_model=BuildASentenceItemDetail)
+def get_build_a_sentence_item(item_id: str) -> BuildASentenceItemDetail:
+    item = get_bas_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    # source_fragments는 셔플해 제공한다 — 순서 자체가 정답 힌트가 되지 않도록 한다.
+    import random
+    fragments = list(item.source_fragments)
+    random.shuffle(fragments)
+    return BuildASentenceItemDetail(
+        item_id=item.item_id,
+        source_fragments=fragments,
+        rubric_version=item.rubric_version,
+        is_official=item.provenance.is_official,
+    )
+
+
+@app.post("/api/build-a-sentence/items/{item_id}/submit", response_model=BuildASentenceSubmitResponse)
+def submit_build_a_sentence_answer(item_id: str, payload: BuildASentenceSubmitRequest) -> BuildASentenceSubmitResponse:
+    item = get_bas_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    result = score_bas_submission(item, payload.submission_text)
+    attempt_number = save_bas_attempt(
+        item_id=item.item_id,
+        item_version=BUILD_SENTENCE_ITEMS_VERSION,
+        rubric_version=item.rubric_version,
+        engine_version=result.engine_version,
+        is_correct=result.is_correct,
+        match_type=result.match_type,
+        time_spent_ms=payload.time_spent_ms,
+    )
+    return BuildASentenceSubmitResponse(
+        item_id=result.item_id,
+        match_type=result.match_type,
+        is_correct=result.is_correct,
+        missing_fragments=result.missing_fragments,
+        extra_tokens=result.extra_tokens,
+        feedback=result.feedback,
+        engine_version=result.engine_version,
+        attempt_number=attempt_number,
+        correct_answer=None if result.is_correct else item.primary_answer,
+    )
+
+
 # ── 전문가 데이터 (관리자 전용) ─────────────────────────────────────────────
 # 기본 비활성화. TOEFL_ADMIN_API_ENABLED=1 환경변수로만 켤 수 있다.
 # 일반 사용자 화면에는 노출하지 않는다. 실제 import는 스크립트/테스트에서 수행하고,
@@ -649,7 +735,7 @@ def download_report(submission_id: int) -> FileResponse:
         raise HTTPException(status_code=404, detail="Submission not found")
 
     result = record["result"]
-    report_dir = BASE_DIR / "data" / "reports"
+    report_dir = exports_dir() / "reports"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"submission_{submission_id}.pdf"
 

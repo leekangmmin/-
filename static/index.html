@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>토플 라이팅 채점기 — 연습용 AI 평가</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -286,6 +284,51 @@
       <div id="history" class="history"></div>
     </section>
 
+    <!-- ── Build a Sentence (자체 제작 연습 문제) ────────────────────── -->
+    <section class="card" id="basSection" aria-labelledby="basTitle">
+      <div class="section-head">
+        <h2 class="card-title" id="basTitle">문장 조립 연습 (Build a Sentence)</h2>
+        <button id="basRefreshBtn" class="btn ghost sm">새로고침</button>
+      </div>
+      <p class="status-highlight">자체 제작 연습 문제 · ETS 공식 문항이 아닙니다</p>
+      <p class="muted small">API나 인터넷 연결 없이도 사용할 수 있어요. 조각을 순서대로 골라 올바른 문장을 완성해 보세요.</p>
+
+      <div class="bas-picker-row">
+        <label class="inline-label" for="basItemSelect">문제 선택
+          <select id="basItemSelect"></select>
+        </label>
+        <button id="basStartBtn" class="btn primary sm">문제 시작</button>
+      </div>
+
+      <div id="basPlayArea" class="bas-play-area hidden">
+        <div class="bas-block">
+          <h3 class="card-subtitle">내 답안 (순서대로)</h3>
+          <ol id="basAnswerList" class="bas-answer-list" aria-label="내가 배열한 순서"></ol>
+          <p class="muted small">조각을 클릭하면 맨 뒤에 추가돼요. ▲▼ 버튼으로 순서를 바꾸고, ✕ 버튼으로 제거할 수 있어요.</p>
+        </div>
+
+        <div class="bas-block">
+          <h3 class="card-subtitle">남은 조각</h3>
+          <div id="basFragmentPool" class="bas-fragment-pool" role="list" aria-label="사용 가능한 조각"></div>
+        </div>
+
+        <details class="bas-fallback">
+          <summary>직접 입력할래요 (키보드로 문장 전체 입력)</summary>
+          <label class="inline-label" for="basDirectInput">직접 입력
+            <textarea id="basDirectInput" rows="2" placeholder="조각을 조합한 전체 문장을 여기에 직접 입력할 수도 있어요"></textarea>
+          </label>
+        </details>
+
+        <div class="bas-actions">
+          <button id="basSubmitBtn" class="btn primary sm">제출</button>
+          <button id="basResetBtn" class="btn ghost sm">다시 시도</button>
+          <span id="basAttemptInfo" class="muted small"></span>
+        </div>
+
+        <div id="basFeedback" class="bas-feedback hidden" role="status"></div>
+      </div>
+    </section>
+
     <!-- ── AI 설정 ───────────────────────────────────────────────────── -->
     <section class="card config-card">
       <details>
@@ -340,6 +383,38 @@
             <button id="testAiConfigBtn" class="btn ghost sm">연결 테스트</button>
             <span id="aiConfigStatus" class="muted small">저장 후 테스트를 실행하세요.</span>
           </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ── 앱 상태 / 분석 모드 / 개인정보 ────────────────────────────── -->
+    <section class="card config-card">
+      <details>
+        <summary>
+          <span>앱 상태 및 분석 모드</span>
+          <span class="muted small" id="statusSummaryLine">기본 분석 모드</span>
+        </summary>
+        <div class="config-body">
+          <p class="status-highlight">현재 점수는 기본 채점 엔진으로 계산됩니다. AI 분석은 점수에 반영되지 않습니다.</p>
+
+          <h3 class="card-subtitle">분석 모드</h3>
+          <ul class="status-list">
+            <li>현재 모드: <strong id="statusAnalysisMode">기본 분석 모드</strong> — 문법·구조·어휘 기반 분석을 사용하고 있어요.</li>
+            <li>AI 심층 분석(Claude): <span id="statusShadowState">비활성</span> — 활성화해도 결과는 내부 연구용으로만 저장되고, 여러분이 보는 점수에는 반영되지 않아요.</li>
+          </ul>
+
+          <h3 class="card-subtitle">버전 정보</h3>
+          <ul class="status-list">
+            <li>앱 버전: <span id="statusAppVersion">-</span></li>
+            <li>데이터 스키마 버전: <span id="statusSchemaVersion">-</span></li>
+          </ul>
+
+          <h3 class="card-subtitle">개인정보</h3>
+          <ul class="status-list">
+            <li>작성한 답안은 이 기기에만 저장돼요. 별도로 활성화하지 않는 한 외부로 전송되지 않아요.</li>
+            <li>데이터 저장 위치: 이 기기의 사용자 데이터 폴더 (앱을 지워도 기록은 남아요)</li>
+            <li>기록 삭제·백업·복원은 향후 이 화면에서 지원할 예정이에요.</li>
+          </ul>
         </div>
       </details>
     </section>

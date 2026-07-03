@@ -400,3 +400,39 @@ class AIConfigResponse(BaseModel):
     has_openai_key: bool
     has_anthropic_key: bool
     has_gemini_key: bool
+
+
+# ── Build a Sentence ─────────────────────────────────────────────────────────
+
+class BuildASentenceItemSummary(BaseModel):
+    item_id: str
+    fragment_count: int
+
+
+class BuildASentenceItemDetail(BaseModel):
+    item_id: str
+    source_fragments: list[str]
+    rubric_version: str
+    is_official: bool = False
+
+
+class BuildASentenceItemListResponse(BaseModel):
+    items_version: str
+    items: list[BuildASentenceItemSummary]
+
+
+class BuildASentenceSubmitRequest(BaseModel):
+    submission_text: str
+    time_spent_ms: Optional[int] = None
+
+
+class BuildASentenceSubmitResponse(BaseModel):
+    item_id: str
+    match_type: Literal["exact", "allowed_variant", "structural_partial", "none"]
+    is_correct: bool
+    missing_fragments: list[str] = Field(default_factory=list)
+    extra_tokens: list[str] = Field(default_factory=list)
+    feedback: str
+    engine_version: str
+    attempt_number: int
+    correct_answer: Optional[str] = None
