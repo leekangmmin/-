@@ -41,6 +41,17 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS drafts (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                prompt_text TEXT NOT NULL DEFAULT '',
+                essay_text TEXT NOT NULL DEFAULT '',
+                task_type TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS bas_attempts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
@@ -157,6 +168,75 @@ def get_submission(submission_id: int) -> dict[str, Any] | None:
         "essay_text": row["essay_text"],
         "result": json.loads(row["result_json"]),
     }
+
+
+def save_draft(prompt_text: str, essay_text: str, task_type: str = "") -> str:
+    """작성 중 답안을 단일 행(id=1)으로 upsert한다. updated_at(ISO)을 반환한다."""
+    init_db()
+    updated_at = datetime.now(UTC).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO drafts (id, prompt_text, essay_text, task_type, updated_at)
+            VALUES (1, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                prompt_text=excluded.prompt_text,
+                essay_text=excluded.essay_text,
+                task_type=excluded.task_type,
+                updated_at=excluded.updated_at
+            """,
+            (prompt_text, essay_text, task_type, updated_at),
+        )
+    return updated_at
+
+
+def get_draft() -> dict[str, Any] | None:
+    init_db()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT prompt_text, essay_text, task_type, updated_at FROM drafts WHERE id = 1"
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def clear_draft() -> None:
+    init_db()
+    with get_conn() as conn:
+        conn.execute("DELETE FROM drafts WHERE id = 1")
+
+
+def delete_submission(submission_id: int) -> bool:
+    """기록 1건을 삭제한다. 존재하지 않으면 False를 반환한다."""
+    init_db()
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM submissions WHERE id = ?", (submission_id,))
+        return cur.rowcount > 0
+
+
+def count_user_records() -> dict[str, int]:
+    """백업 메타데이터/삭제 확인용 사용자 데이터 레코드 수."""
+    init_db()
+    with get_conn() as conn:
+        return {
+            "submissions": int(conn.execute("SELECT COUNT(*) AS c FROM submissions").fetchone()["c"]),
+            "bas_attempts": int(conn.execute("SELECT COUNT(*) AS c FROM bas_attempts").fetchone()["c"]),
+            "drafts": int(conn.execute("SELECT COUNT(*) AS c FROM drafts").fetchone()["c"]),
+            "app_settings": int(conn.execute("SELECT COUNT(*) AS c FROM app_settings").fetchone()["c"]),
+        }
+
+
+def delete_all_user_data() -> dict[str, int]:
+    """모든 사용자 데이터(제출 기록/BAS 기록/draft/설정)를 삭제하고
+    삭제 전 레코드 수를 반환한다. 테이블 구조는 유지한다(DB 재생성 불필요)."""
+    counts = count_user_records()
+    with get_conn() as conn:
+        conn.execute("DELETE FROM submissions")
+        conn.execute("DELETE FROM bas_attempts")
+        conn.execute("DELETE FROM drafts")
+        conn.execute("DELETE FROM app_settings")
+    return counts
 
 
 def save_bas_attempt(

@@ -402,17 +402,37 @@ class AIConfigResponse(BaseModel):
     has_gemini_key: bool
 
 
+# ── Draft / Backup / 데이터 삭제 ─────────────────────────────────────────────
+
+class DraftSaveRequest(BaseModel):
+    prompt_text: Optional[str] = None
+    essay_text: Optional[str] = None
+    task_type: Optional[str] = None
+
+
+class BackupFileRequest(BaseModel):
+    filename: str
+
+
+class DeleteAllRequest(BaseModel):
+    confirm: str
+
+
 # ── Build a Sentence ─────────────────────────────────────────────────────────
 
 class BuildASentenceItemSummary(BaseModel):
     item_id: str
     fragment_count: int
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
+    grammar_tag: str = ""
 
 
 class BuildASentenceItemDetail(BaseModel):
     item_id: str
     source_fragments: list[str]
     rubric_version: str
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
+    grammar_tag: str = ""
     is_official: bool = False
 
 
@@ -433,6 +453,7 @@ class BuildASentenceSubmitResponse(BaseModel):
     missing_fragments: list[str] = Field(default_factory=list)
     extra_tokens: list[str] = Field(default_factory=list)
     feedback: str
+    explanation: str = ""  # 이 문장의 문법 포인트 설명 (정답/오답 모두 표시)
     engine_version: str
     attempt_number: int
     correct_answer: Optional[str] = None

@@ -114,6 +114,9 @@ from app.models import (
     CompareScoreInfo,
     AIConfigRequest,
     AIConfigResponse,
+    BackupFileRequest,
+    DeleteAllRequest,
+    DraftSaveRequest,
     BuildASentenceItemDetail,
     BuildASentenceItemListResponse,
     BuildASentenceItemSummary,
@@ -589,6 +592,113 @@ def history(limit: int = 20) -> SubmissionHistoryResponse:
     return SubmissionHistoryResponse(items=items)
 
 
+@app.delete("/api/history/{submission_id}")
+def delete_history_item(submission_id: int) -> dict[str, Any]:
+    from app.db import delete_submission
+
+    if not delete_submission(submission_id):
+        raise HTTPException(status_code=404, detail="Submission not found")
+    return {"deleted": submission_id}
+
+
+# ── 온보딩 상태 (최초 실행 안내 — 사용자 config에 저장) ─────────────────────
+@app.get("/api/onboarding")
+def onboarding_status() -> dict[str, Any]:
+    return {"done": get_setting("onboarding_done", "0") == "1"}
+
+
+@app.post("/api/onboarding/complete")
+def onboarding_complete() -> dict[str, Any]:
+    set_setting("onboarding_done", "1")
+    return {"done": True}
+
+
+@app.post("/api/onboarding/reset")
+def onboarding_reset() -> dict[str, Any]:
+    set_setting("onboarding_done", "0")
+    return {"done": False}
+
+
+# ── 작성 중 답안 (draft) — 서버측 보존으로 강제 종료 후에도 복구 가능 ────────
+@app.get("/api/draft")
+def read_draft() -> dict[str, Any]:
+    from app.db import get_draft
+
+    draft = get_draft()
+    return {"draft": draft}
+
+
+@app.put("/api/draft")
+def write_draft(payload: DraftSaveRequest) -> dict[str, Any]:
+    from app.db import save_draft
+
+    updated_at = save_draft(
+        prompt_text=payload.prompt_text or "",
+        essay_text=payload.essay_text or "",
+        task_type=payload.task_type or "",
+    )
+    return {"saved": True, "updated_at": updated_at}
+
+
+@app.delete("/api/draft")
+def remove_draft() -> dict[str, Any]:
+    from app.db import clear_draft
+
+    clear_draft()
+    return {"cleared": True}
+
+
+# ── 백업·복원 (사용자 데이터 안전) ──────────────────────────────────────────
+@app.post("/api/backup")
+def create_user_backup() -> dict[str, Any]:
+    from app.backup import create_backup
+
+    return create_backup()
+
+
+@app.get("/api/backup/list")
+def list_user_backups() -> dict[str, Any]:
+    from app.backup import list_backups
+    from app.paths import backups_dir
+
+    return {"backups": list_backups(), "backups_dir": str(backups_dir())}
+
+
+@app.post("/api/backup/inspect")
+def inspect_user_backup(payload: BackupFileRequest) -> dict[str, Any]:
+    from app.backup import RestoreError, inspect_backup
+
+    try:
+        return inspect_backup(payload.filename)
+    except RestoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/backup/restore")
+def restore_user_backup(payload: BackupFileRequest) -> dict[str, Any]:
+    from app.backup import RestoreError, restore_backup
+
+    try:
+        return restore_backup(payload.filename)
+    except RestoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/data/delete-all")
+def delete_all_data(payload: DeleteAllRequest) -> dict[str, Any]:
+    """전체 사용자 데이터 삭제 — 위험한 작업이므로 확인 문구를 요구한다."""
+    from app.backup import create_backup
+    from app.db import delete_all_user_data
+
+    if payload.confirm != "모두 삭제":
+        raise HTTPException(status_code=400, detail="확인 문구가 일치하지 않습니다")
+
+    # 삭제 직전 자동 백업 — 실수로 지운 경우 복원 가능
+    safety = create_backup()
+    deleted = delete_all_user_data()
+    return {"deleted_counts": deleted, "safety_backup": safety["filename"]}
+
+
 @app.get("/api/dashboard", response_model=DashboardResponse)
 def dashboard(request: Request, limit: int = 200) -> DashboardResponse:
     host = (request.client.host if request.client else "")
@@ -648,7 +758,12 @@ def list_build_a_sentence_items() -> BuildASentenceItemListResponse:
     return BuildASentenceItemListResponse(
         items_version=BUILD_SENTENCE_ITEMS_VERSION,
         items=[
-            BuildASentenceItemSummary(item_id=item.item_id, fragment_count=len(item.source_fragments))
+            BuildASentenceItemSummary(
+                item_id=item.item_id,
+                fragment_count=len(item.source_fragments),
+                difficulty=item.difficulty,
+                grammar_tag=item.grammar_tag,
+            )
             for item in BUILD_A_SENTENCE_ITEMS
         ],
     )
@@ -667,6 +782,8 @@ def get_build_a_sentence_item(item_id: str) -> BuildASentenceItemDetail:
         item_id=item.item_id,
         source_fragments=fragments,
         rubric_version=item.rubric_version,
+        difficulty=item.difficulty,
+        grammar_tag=item.grammar_tag,
         is_official=item.provenance.is_official,
     )
 
@@ -694,6 +811,7 @@ def submit_build_a_sentence_answer(item_id: str, payload: BuildASentenceSubmitRe
         missing_fragments=result.missing_fragments,
         extra_tokens=result.extra_tokens,
         feedback=result.feedback,
+        explanation=item.explanation,
         engine_version=result.engine_version,
         attempt_number=attempt_number,
         correct_answer=None if result.is_correct else item.primary_answer,
