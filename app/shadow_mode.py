@@ -16,9 +16,9 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Optional
 
+from app.paths import databases_dir
 from app.scoring_provider import ScoringInput, ScoringProvider, ShadowScoreResult
 from app.versions import (
     EXAM_SPEC_VERSION,
@@ -28,7 +28,7 @@ from app.versions import (
     SCORING_ENGINE_VERSION,
 )
 
-SHADOW_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "shadow_assessments.db"
+SHADOW_DB_PATH = databases_dir() / "shadow_assessments.db"
 
 # app/claude_provider.CLAUDE_PROMPT_VERSION 등 provider별 prompt version과 별개로,
 # shadow 비교 리포트 스키마 자체의 버전.

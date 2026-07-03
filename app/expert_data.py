@@ -25,8 +25,9 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.expert_models import ExpertRatedResponse, ImportResult, ImportRowError
+from app.paths import databases_dir
 
-EXPERT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "expert_data.db"
+EXPERT_DB_PATH = databases_dir() / "expert_data.db"
 
 # 같은 prompt_id의 답안들이 development/calibration/validation/locked_test에
 # 무작위로 흩어지지 않도록, prompt_id 해시로 결정론적 split을 배정한다.

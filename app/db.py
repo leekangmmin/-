@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "submissions.db"
+from app.paths import databases_dir
+
+DB_PATH = databases_dir() / "submissions.db"
 
 
 def get_conn() -> sqlite3.Connection:
@@ -35,6 +36,22 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bas_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                item_version TEXT NOT NULL,
+                rubric_version TEXT NOT NULL,
+                engine_version TEXT NOT NULL,
+                is_correct INTEGER NOT NULL,
+                match_type TEXT NOT NULL,
+                time_spent_ms INTEGER,
+                attempt_number INTEGER NOT NULL
             )
             """
         )
@@ -140,6 +157,64 @@ def get_submission(submission_id: int) -> dict[str, Any] | None:
         "essay_text": row["essay_text"],
         "result": json.loads(row["result_json"]),
     }
+
+
+def save_bas_attempt(
+    item_id: str,
+    item_version: str,
+    rubric_version: str,
+    engine_version: str,
+    is_correct: bool,
+    match_type: str,
+    time_spent_ms: int | None,
+) -> int:
+    init_db()
+    created_at = datetime.now(UTC).isoformat()
+    with get_conn() as conn:
+        attempt_number = 1 + int(
+            conn.execute(
+                "SELECT COUNT(*) AS c FROM bas_attempts WHERE item_id = ?",
+                (item_id,),
+            ).fetchone()["c"]
+        )
+        cur = conn.execute(
+            """
+            INSERT INTO bas_attempts
+                (created_at, item_id, item_version, rubric_version, engine_version,
+                 is_correct, match_type, time_spent_ms, attempt_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                created_at, item_id, item_version, rubric_version, engine_version,
+                int(is_correct), match_type, time_spent_ms, attempt_number,
+            ),
+        )
+        if cur.lastrowid is None:
+            raise RuntimeError("Failed to save build-a-sentence attempt")
+        return attempt_number
+
+
+def list_bas_attempts(item_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        if item_id:
+            rows = conn.execute(
+                """
+                SELECT id, created_at, item_id, item_version, rubric_version, engine_version,
+                       is_correct, match_type, time_spent_ms, attempt_number
+                FROM bas_attempts WHERE item_id = ? ORDER BY id DESC LIMIT ?
+                """,
+                (item_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, created_at, item_id, item_version, rubric_version, engine_version,
+                       is_correct, match_type, time_spent_ms, attempt_number
+                FROM bas_attempts ORDER BY id DESC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+    return [dict(row) | {"is_correct": bool(row["is_correct"])} for row in rows]
 
 
 def set_setting(key: str, value: str) -> None:

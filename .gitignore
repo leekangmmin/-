@@ -8,6 +8,13 @@ data/app.log
 data/app.pid
 data/reports/
 data/real_llm_injection_results.json
+data/.migration_backup_v1/
 dist_macos/
 dist_windows/
 NativeMacApp/.build/
+
+# PyInstaller 빌드 산출물 (scripts/build_macos.sh) — 재현 가능한 빌드이므로
+# Git에 커밋하지 않는다. 필요하면 release artifact로 별도 보관한다.
+.build-venv/
+build/
+dist/
