@@ -1,220 +1,200 @@
-
 <p align="center">
-  <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/logo.png" alt="TOEFL 첨삭기 로고" width="120"/>
+  <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/logo.png" alt="토플 라이팅 채점기 아이콘" width="112"/>
 </p>
 
-<h1 align="center">2026 개정 TOEFL 라이팅 첨삭기</h1>
+<h1 align="center">토플 라이팅 채점기</h1>
 
 <p align="center">
-  <b>AI 실시간 첨삭, 성장 대시보드, PDF 리포트까지 한 번에</b><br>
-  <img src="https://img.shields.io/github/v/release/leekangmmin/-?style=flat-square"/>
-  <img src="https://img.shields.io/github/last-commit/leekangmmin/-?style=flat-square"/>
-  <img src="https://img.shields.io/github/languages/top/leekangmmin/-?style=flat-square"/>
+  <b>API·인터넷 없이도 바로 쓰는 2026 개정 TOEFL Writing 연습·첨삭 데스크톱 앱</b><br/>
+  <sub>문법·어휘·구조 기반 오프라인 채점 · 성장 대시보드 · PDF 리포트 · 문장 조립 연습</sub>
 </p>
 
 <p align="center">
-  <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-macOS.dmg" style="text-decoration:none;">
-    <img src="https://img.shields.io/badge/macOS-앱%20다운로드-000000?style=for-the-badge&logo=apple&logoColor=white&labelColor=000000" alt="macOS 앱 다운로드" width="320"/>
-  </a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/leekangmmin/-/releases/download/latest/TOEFLScorer-Setup.exe" style="text-decoration:none;">
-    <img src="https://img.shields.io/badge/Windows-앱%20다운로드-0078D4?style=for-the-badge&logo=windows&logoColor=white&labelColor=0078D4" alt="Windows 앱 다운로드" width="320"/>
-  </a>
+  <img src="https://img.shields.io/badge/platform-macOS%2012%2B-000000?style=flat-square&logo=apple&logoColor=white"/>
+  <img src="https://img.shields.io/badge/tests-237%20passing-17a05d?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-0.6.0%20(internal%20RC)-3182f6?style=flat-square"/>
+  <img src="https://img.shields.io/badge/offline-core-8b5cf6?style=flat-square"/>
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square"/>
+</p>
+
+<p align="center">
+  <a href="#-내려받기">내려받기</a> ·
+  <a href="#-주요-기능">주요 기능</a> ·
+  <a href="#-개발자로-실행하기">개발자 실행</a> ·
+  <a href="#-아키텍처">아키텍처</a> ·
+  <a href="#-데이터-안전과-개인정보">개인정보</a>
+</p>
+
+<br/>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/screenshot_main.png" alt="작성 화면과 성장 대시보드" width="820"/>
 </p>
 
 ---
 
-<div align="center">
-  <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/screenshot_main.png" alt="앱 메인화면 스크린샷" width="700"/>
-</div>
+## ✨ 한눈에 보기
+
+> **점수보다 "다음에 무엇을 고칠지"가 먼저 보이는 라이팅 연습 앱입니다.**
+> 답안을 붙여넣으면 이메일 / 학술 토론 유형을 자동으로 구분해, 문법·어휘·구조·주제
+> 적합성을 분석하고 **가장 먼저 고칠 것 한 가지**부터 알려줍니다. 모든 채점은
+> 인터넷·API 키 없이 이 기기 안에서 이루어집니다.
+
+| | |
+|---|---|
+| 🔌 **오프라인 우선** | API 키·인터넷 없이 채점·기록·PDF·문장 조립 연습이 모두 작동 |
+| 🎯 **연습용 밴드 추정** | 2026 개정 기준 1–6 밴드 + 30점 환산(참고용). 공식 점수가 아님을 항상 표시 |
+| 🧩 **영역별 진단** | 구조·내용·일관성·예시·문법·어휘 6개 영역 점수와 문장별 첨삭 |
+| 📈 **성장 대시보드** | 점수 추이·반복 약점·유형별 성과를 데이터가 쌓일수록 자동 표시 |
+| 🧱 **문장 조립 연습** | 자체 제작 15문항(난이도 3단계)으로 어순·문법 감각 훈련 |
+| 📄 **PDF 리포트** | 제출별 상세 리포트를 로컬에서 생성 |
+| 💾 **백업 · 복원** | 기록을 언제든 백업하고 되돌릴 수 있고, 업데이트 후에도 데이터 보존 |
+| 🔒 **로컬 저장** | 답안·점수는 이 기기에만 저장. 동의 없이 외부로 전송하지 않음 |
+
+<br/>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/screenshot_report.png" alt="채점 결과와 영역별 점수" width="720"/>
+</p>
 
 ---
 
+## 📦 내려받기
 
-## 주요 기능
+이 앱은 현재 **macOS 내부 릴리스 후보(v0.6.0)** 단계입니다.
 
-- **AI 실시간 문법/논리/어휘 첨삭** (내장/외부 AI)
-- **TOEFL 루브릭 기반 점수 예측** (6.0 만점 환산)
-- **문법/논리/어휘별 신뢰도 점수**로 피드백 우선순위 제공
-- **PDF 리포트 자동 생성** (제출별/누적 성장 대시보드)
-- **macOS/Windows 네이티브 앱** (설치/포터블 모두 지원)
-- **API 연동 및 오픈소스 확장성**
+1. [**Releases**](https://github.com/leekangmmin/-/releases) 에서 최신 `TOEFL-Writing-macOS-<버전>.dmg` 를 내려받으세요.
+2. DMG를 열고 앱을 **Applications** 폴더로 드래그합니다.
+3. 처음 실행 시 macOS가 개발자 확인 경고를 띄우면, 앱을 **우클릭 → 열기**로 실행하세요.
+
+> ⚠️ **정직한 안내:** 이 빌드는 Apple Developer 인증서로 **서명·공증되지 않았습니다**
+> (ad-hoc 서명 상태). 따라서 Gatekeeper 경고를 우회해야 실행되며, 정식 외부 배포용이
+> 아닌 **내부 테스트용**입니다. 서명·공증이 완료되기 전까지는 신뢰하는 본인 기기에서만
+> 사용하시길 권장합니다. Windows 빌드는 아직 제공되지 않습니다.
+
+터미널·Python 설치는 필요하지 않습니다 — 더블클릭으로 실행되는 네이티브 앱입니다.
 
 ---
 
+## 🎯 주요 기능
 
-## 빠른 시작
+### 오프라인 채점
+답안을 붙여넣고 **채점하기**만 누르면 됩니다. 이메일·학술 토론 유형 자동 구분,
+1–6 밴드 추정, 구조·내용·일관성·예시·문법·어휘 6개 영역 점수, 문장별 첨삭,
+목표 점수까지의 리라이팅 예시를 제공합니다. 처리 단계를 정직하게 보여주고
+가짜 진행률을 쓰지 않습니다.
 
-- 위 다운로드 버튼 클릭 → 설치파일 실행
-- 또는 포터블 exe 바로 실행
-- macOS: 앱 실행 시 별도 Python/가상환경 필요 없음
-- Windows: 설치파일 또는 포터블 exe 실행
+### 문장 조립 연습 (Build a Sentence)
+난이도 3단계 자체 제작 15문항. 조각을 클릭·드래그·키보드로 배열하거나 직접
+입력해 정답 문장을 완성하고, 왜 그 어순이 정답인지 문법 설명을 확인합니다.
 
-### 개발자/로컬 실행
+### 성장 기록 & 백업
+제출할수록 점수 추이·반복 약점·유형별 성과가 쌓입니다. 언제든 백업 파일을
+만들고 되돌릴 수 있으며, 앱을 업데이트해도 기록이 유지됩니다.
+
+---
+
+## 🚀 개발자로 실행하기
 
 ```bash
-python -m venv .venv
+git clone https://github.com/leekangmmin/-.git toefl-writing-scorer
+cd toefl-writing-scorer
+
+python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+# ① 브라우저에서 개발 서버로 실행
 uvicorn app.main:app --reload
+#   → http://127.0.0.1:8000
+
+# ② 데스크톱 앱(네이티브 창)으로 실행
+python -m desktop.launcher
 ```
 
-- http://127.0.0.1:8000 접속
-
----
-
-
----
-
-
-## 프로젝트 구조
-
-- **app/**: FastAPI 백엔드/AI 엔진
-- **static/**: 프론트엔드(HTML/JS/CSS)
-- **NativeMacApp/**: macOS SwiftUI 클라이언트
-- **windows/**: Windows 런처/빌드 스크립트
-
----
-
-
-## 빌드/배포
-
-- macOS: `./macos/build_standalone_server.command` → 앱 실행
-- Windows: `windows/build_windows.ps1` → exe 실행
-- GitHub Actions 자동 빌드/릴리즈
-
----
-
-
-## 주의
-
-- 본 도구는 학습/연습용 피드백 제공 목적이며, ETS 공식 채점 결과와 다를 수 있습니다.
-
----
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/leekangmmin/-/main/static/screenshot_report.png" alt="PDF 리포트 스크린샷" width="700"/>
-</p>
-
-위 방식은 외부 브라우저 없이 네이티브 창에서 동작합니다.
-
----
-
-## AI 연동
-
-앱 내부 설정 화면에서 아래 공급자 중 하나를 선택해 API 키를 저장하면, 연결된 AI를 첨삭 보강에 사용합니다.
-
-- ChatGPT (OpenAI)
-- Claude (Anthropic)
-- Gemini (Google)
-
-기본값은 로컬 모드이며, AI 연결이 활성화되면 분석 모드가 AI로 표시됩니다.
-
----
-
-## API
-
-### POST /api/evaluate
-
-요청 예시:
-
-```json
-{
-  "prompt_type": "academic_discussion",
-  "prompt_text": "Some teachers think students should take more group projects...",
-  "essay_text": "I agree with the professor because ..."
-}
-```
-
-### POST /api/precheck
-
-제출 전 위험 경고(분량/키워드 반영/문단/run-on)를 반환합니다.
-
-### GET /api/history?limit=10
-
-최근 제출 내역 반환
-
-### GET /api/dashboard?limit=200
-
-누적 제출 기반 성장 대시보드 반환
-
-### GET /api/report/{submission_id}.pdf
-
-제출별 PDF 리포트 생성/다운로드
-
----
-
-## 프로젝트 구조
-
-- app/main.py: FastAPI 엔트리포인트
-- app/scorer.py: 루브릭 기반 점수 추정 엔진
-- app/feedback.py: 첨삭/개선 피드백 생성
-- app/db.py: SQLite 저장
-- static/: 프론트엔드 UI
-
----
-
-## 빌드/배포
-
-### macOS 네이티브 개발 소스
-
-- SwiftUI 클라이언트: [NativeMacApp](NativeMacApp)
-- 실행 파일 빌드: `swift build -c release --package-path NativeMacApp`
-
-### Windows 배포
-
-macOS SwiftUI UI는 Windows에서 직접 실행되지 않으므로, Windows에서는 FastAPI + pywebview 런처(exe)로 배포합니다.
-
-- 런처 소스: [windows/app_launcher.py](windows/app_launcher.py)
-- Windows 실행(소스): [windows/run_windows.bat](windows/run_windows.bat)
-- exe 빌드 스크립트: [windows/build_windows.ps1](windows/build_windows.ps1)
-
-#### Windows exe 만들기
-
-1. Windows PowerShell 실행
-2. 프로젝트 루트 이동
-3. 아래 명령 실행
-
-```powershell
-powershell -ExecutionPolicy Bypass -File windows/build_windows.ps1
-```
-
-완료 후 `dist_windows/TOEFLScorer.exe`가 생성됩니다.
-
-#### Windows 설치파일(Setup.exe) 만들기
-
-1. Inno Setup 6 설치
-2. 아래 명령 실행
-
-```powershell
-powershell -ExecutionPolicy Bypass -File windows/build_installer.ps1
-```
-
-완료 후 `dist_windows/installer/TOEFLScorer-Setup.exe`가 생성됩니다.
-
-#### Windows 포터블 실행파일(.exe) 만들기
-
-```powershell
-powershell -ExecutionPolicy Bypass -File windows/build_windows.ps1
-```
-
-완료 후 `dist_windows/TOEFLScorer.exe`가 생성됩니다.
-
-### macOS 설치파일(.dmg) 만들기
+### 테스트 & 품질 게이트
 
 ```bash
-./macos/build_installer.command
+pytest -q                        # 237개 테스트
+python -m tests.eval_harness     # 채점 품질 회귀 게이트(오탐·순위·재현성)
 ```
 
-완료 후 `dist_macos/TOEFLScorer-macOS.dmg`가 생성됩니다.
+### macOS 앱 빌드 (릴리스 파이프라인)
 
-### GitHub Actions 자동 빌드
-
-- 워크플로: [.github/workflows/build-installers.yml](.github/workflows/build-installers.yml)
-- 트리거: `workflow_dispatch`, `main` 푸시, `v*` 태그 푸시
+```bash
+./scripts/build_macos.sh
+#  clean venv → 테스트 → 아이콘 → PyInstaller → Info.plist 검증
+#  → 보안 스캔 → 패키징 스모크 → 업데이트 보존 테스트 → manifest·checksum·zip
+./scripts/make_dmg.sh            # 내부 테스트용 DMG
+```
 
 ---
 
-## 주의
+## 🧱 아키텍처
 
-- ETS 공식 채점을 대체하는 도구가 아니라, 학습용 추정/피드백 도구입니다.
+```
+desktop/            네이티브 실행·생명주기 (비즈니스 로직 없음)
+ ├─ launcher.py       중복 실행 방지 → 동적 포트 서버 → pywebview 창 → graceful shutdown
+ ├─ server_manager.py in-process uvicorn 스레드 (고아 프로세스 구조적 차단)
+ └─ single_instance.py
+
+app/                모든 기능 (오프라인 코어)
+ ├─ scorer / feedback / vocab_analysis   문법·어휘·구조 휴리스틱 채점
+ ├─ build_a_sentence_*                    문장 조립 (결정론 엔진 + 15문항)
+ ├─ backup.py                             백업·복원 (롤백·키 제거·경로 차단)
+ ├─ db.py / paths.py / version.py         SQLite · OS 표준 경로 · 버전 단일 출처
+ └─ main.py                               FastAPI 엔드포인트
+
+static/             토스 스타일 웹 UI (외부 CDN 의존성 0)
+```
+
+**스택:** FastAPI · pywebview · SQLite · PyInstaller (one-dir) · platformdirs
+데이터는 `~/Library/Application Support/TOEFL Writing/` 에 저장되어 앱을 지워도 남고,
+업데이트 시에도 보존됩니다.
+
+### 세 가지 분석 모드
+
+| 모드 | 상태 | 설명 |
+|---|---|---|
+| **오프라인 코어** | ✅ 기본 | 문법·어휘·구조 기반 채점. API·인터넷 불필요 |
+| **클라우드 AI** | 🔧 선택 | Claude 등 심층 분석. 기본 비활성 · **점수에 개입하지 않음** · 사용자가 직접 켜야 함 |
+| **로컬 AI** | 🚧 예정 | 온디바이스 모델 확장 구조만 준비 |
+
+문서: [`docs/`](docs/) — 아키텍처, 오프라인 코어, 백업·복원, 빌드, 보안 감사,
+Phase별 검증 보고서 등.
+
+---
+
+## 🔒 데이터 안전과 개인정보
+
+- **로컬 전용 저장** — 답안·점수·연습 기록은 이 기기에만 저장됩니다.
+- **외부 전송 없음** — 클라우드 AI를 직접 켜기 전까지 어떤 데이터도 외부로 나가지 않습니다.
+- **작성 중 복구** — 앱이 강제 종료돼도 작성하던 답안을 되살립니다.
+- **백업 · 복원** — 설정에서 백업을 만들고 되돌릴 수 있으며, 백업 파일에는 **API 키가 담기지 않습니다.**
+- **안전한 삭제** — 전체 삭제 전 자동 백업을 만들어 실수로 지워도 복구할 수 있습니다.
+- **로컬 서버** — `127.0.0.1` 에만 바인딩하고 외부 네트워크에 노출하지 않습니다.
+
+---
+
+## ⚠️ 아직 완료되지 않은 것
+
+투명하게 밝힙니다.
+
+- Apple Developer 서명·공증 (현재 ad-hoc, **외부 배포 불가**)
+- Windows 빌드 (미검증)
+- 실제 대규모 클라우드 AI 채점 품질 검증
+- 전문가 채점 데이터 기반 정확도 캘리브레이션
+- 온디바이스 로컬 AI
+
+밴드 점수는 **공개 기준을 참고한 연습용 추정치**이며 **ETS 공식 점수가 아닙니다.**
+문장 조립 문항은 전부 자체 제작이며 ETS 공식 문항이 아닙니다.
+
+---
+
+## 📜 라이선스
+
+MIT License — 자유롭게 사용·수정·재배포할 수 있습니다.
+단, "TOEFL"과 "ETS"는 Educational Testing Service의 상표이며, 이 프로젝트는 ETS와
+제휴·보증 관계가 없는 **비공식 학습 도구**입니다.
+
+<p align="center"><sub>Made with care · 오프라인에서도 안심하고 쓰는 라이팅 연습</sub></p>
