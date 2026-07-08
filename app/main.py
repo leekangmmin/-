@@ -124,6 +124,7 @@ from app.models import (
     BuildASentenceSubmitResponse,
 )
 from app.ai_mode import ai_enabled, ai_enhance, ai_runtime_config
+from app.local_ai import get_local_ai_manager
 from app.db import get_setting, set_setting
 from app.models import EngineInfo
 from app.scorer import analyze_essay, grammar_cap_status, score_essay, score_essay_detailed
@@ -817,6 +818,102 @@ def submit_build_a_sentence_answer(item_id: str, payload: BuildASentenceSubmitRe
         correct_answer=None if result.is_correct else item.primary_answer,
     )
 
+
+
+# ── Local AI (Phase 8-B) ───────────────────────────────────────────────────
+# 기본 분석(Offline Core)은 항상 사용 가능. 로컬 AI는 선택 기능이며 LLM 미설치
+# 상태에서도 앱은 정상 작동한다. 답안은 기본적으로 기기 밖으로 나가지 않는다.
+@app.get("/api/local-ai/status")
+def local_ai_status() -> dict[str, Any]:
+    """로컬 AI 상태 조회. 항상 응답하며, LLM 미설치 시 unavailable로 표시된다."""
+    manager = get_local_ai_manager()
+    return manager.status_summary()
+
+
+@app.post("/api/local-ai/warmup")
+def local_ai_warmup() -> dict[str, Any]:
+    """Ollama 모델 웜업. 첫 호출 시 모델 로딩을 미리 수행한다."""
+    manager = get_local_ai_manager()
+    result = manager.warmup_ollama()
+    return result
+
+
+@app.post("/api/local-ai/test")
+def local_ai_test() -> dict[str, Any]:
+    """로컬 AI 연결 테스트. RuleLocalAIProvider는 항상 성공, LLM provider는 감지된 경우만."""
+    manager = get_local_ai_manager()
+    status = manager.status_summary()
+    provider = manager.get_selected()
+
+    if provider.id == "rule":
+        return {
+            "ok": True,
+            "message": "기본 분석 엔진이 정상 작동합니다 (규칙 기반, 항상 사용 가능)",
+            "provider": provider.id,
+            "provider_name": provider.display_name,
+            "runs_offline": True,
+        }
+
+    availability = provider.is_available()
+    if not availability.available:
+        return {
+            "ok": False,
+            "message": f"로컬 AI를 사용할 수 없습니다: {availability.detail}",
+            "provider": provider.id,
+            "status": availability.status,
+        }
+
+    sample_essay = "I think students should use evidence in their writing because it makes arguments stronger. For example, when students include research data, readers trust them more."
+    from app.local_ai import LocalAIRequest
+    result = provider.analyze_response(LocalAIRequest(essay_text=sample_essay))
+    return {
+        "ok": result.valid,
+        "message": f"{provider.display_name} 연결 테스트 {'성공' if result.valid else '실패'}",
+        "provider": provider.id,
+        "provider_name": provider.display_name,
+        "model_name": result.model_name,
+        "runs_offline": result.runs_offline,
+        "latency_ms": result.latency_ms,
+        "summary": result.summary,
+        "performance": result.performance,
+    }
+
+
+@app.post("/api/local-ai/analyze")
+def local_ai_analyze(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    """로컬 AI 분석을 실행한다. 실패해도 Offline Core 채점에 영향을 주지 않는다."""
+    _require_local_session(request)
+
+    essay_text = str(payload.get("essay_text", "")).strip()
+    if not essay_text or len(essay_text.split()) < 30:
+        raise HTTPException(status_code=400, detail="분석할 수 있는 충분한 텍스트가 필요합니다 (최소 30단어)")
+
+    prompt_type = str(payload.get("prompt_type", "academic_discussion"))
+    prompt_text = str(payload.get("prompt_text", ""))
+
+    manager = get_local_ai_manager()
+    result = manager.analyze(essay_text=essay_text, prompt_type=prompt_type, prompt_text=prompt_text)
+
+    return {
+        "valid": result.valid,
+        "provider_id": result.provider_id,
+        "provider_name": result.provider_name,
+        "model_name": result.model_name,
+        "runs_offline": result.runs_offline,
+        "confidence": result.confidence,
+        "latency_ms": result.latency_ms,
+        "warnings": result.warnings,
+        "summary": result.summary,
+        "strengths": [{"text": s.text, "type": s.type, "confidence": s.confidence} for s in result.strengths],
+        "priority_issues": [{"text": i.text, "type": i.type, "confidence": i.confidence} for i in result.priority_issues],
+        "sentence_suggestions": [
+            {"original": s.original, "improved": s.improved, "reason": s.reason, "confidence": s.confidence}
+            for s in result.sentence_suggestions
+        ],
+        "rewrite": result.rewrite,
+        "next_practice_goal": result.next_practice_goal,
+        "performance": result.performance,
+    }
 
 # ── 전문가 데이터 (관리자 전용) ─────────────────────────────────────────────
 # 기본 비활성화. TOEFL_ADMIN_API_ENABLED=1 환경변수로만 켤 수 있다.
