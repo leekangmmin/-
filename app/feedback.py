@@ -55,28 +55,28 @@ def build_feedback(
     else:
         weaknesses.append("분량이 짧아 논리 전개가 충분히 드러나지 않습니다.")
         action_plan.append(
-            f"최소 {recommended_words}단어를 넘기도록 핵심 주장 뒤에 이유 2개와 구체 예시 1개를 추가하세요."
+            f"최소 {recommended_words}단어를 넘기도록 핵심 주장 뒤에 이유 2개와 구체 예시 1개를 추가하세요. (분량 미달은 5.0점 이상 불가)"
         )
 
     if metrics.paragraph_count >= 3:
         strengths.append("문단 구성이 명확해 읽는 흐름이 안정적입니다.")
     else:
         weaknesses.append("문단 분리가 약해 아이디어 경계가 불분명합니다.")
-        action_plan.append("서론-본론-결론 3단 구조로 문단을 분리하세요.")
+        action_plan.append("서론-본론-결론 3단 구조로 문단을 분리하세요. (문단 미분리 시 5.0점 이상 불가)")
 
     if metrics.transition_hits >= 3:
         strengths.append("연결어 사용이 있어 문장 간 논리 연결이 잘 보입니다.")
     else:
         weaknesses.append("연결어가 부족해 문장 간 점프가 발생합니다.")
         action_plan.append(
-            "However, Therefore, For example 같은 연결어를 문단당 1개 이상 넣으세요."
+            "However, Therefore, For example 같은 연결어를 문단당 1개 이상 넣으세요. (연결어 부족 시 5.0점 이상 불가)"
         )
 
-    if metrics.lexical_diversity >= 0.42:
+    if metrics.lexical_diversity >= 0.48:
         strengths.append("어휘 반복이 과하지 않아 표현 폭이 괜찮습니다.")
     else:
         weaknesses.append("같은 단어 반복이 많아 표현이 단조롭게 느껴집니다.")
-        action_plan.append("반복 단어 5개를 동의어로 교체해 어휘 다양성을 높이세요.")
+        action_plan.append("반복 단어 5개를 동의어로 교체해 어휘 다양성을 높이세요. (어휘 다양성 부족 시 5.0점 이상 불가)")
 
     if metrics.long_sentence_ratio > 0.25:
         weaknesses.append("긴 문장이 많아 문법 오류 가능성과 가독성 저하가 있습니다.")

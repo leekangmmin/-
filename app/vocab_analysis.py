@@ -72,8 +72,52 @@ _COLLOCATIONS: list[str] = [
 
 def analyze_vocabulary(text: str) -> dict:
     """Return vocabulary richness metrics for the given essay text."""
-    tokens = re.findall(r"\b[a-zA-Z]{3,}\b", text.lower())
-    if not tokens:
+    try:
+        tokens = re.findall(r"\b[a-zA-Z]{3,}\b", text.lower())
+        if not tokens:
+            return {
+                "total_words": 0,
+                "unique_words": 0,
+                "academic_word_count": 0,
+                "academic_ratio": 0.0,
+                "type_token_ratio": 0.0,
+                "sophistication_score": 0.0,
+                "academic_words_found": [],
+                "collocations_found": [],
+                "suggestions": ["에세이 내용이 없습니다."]
+            }
+        total_words = len(tokens)
+        unique_words = len(set(tokens))
+        academic_words = [w for w in tokens if w in _AWL]
+        academic_word_count = len(academic_words)
+        academic_ratio = academic_word_count / total_words if total_words else 0.0
+        type_token_ratio = unique_words / total_words if total_words else 0.0
+        sophistication_score = academic_ratio * 0.7 + type_token_ratio * 0.3
+        academic_words_found = list(sorted(set(academic_words)))
+        collocations_found = [c for c in _COLLOCATIONS if c in text.lower()]
+        suggestions = []
+        if academic_ratio < 0.10:
+            suggestions.append("학술 어휘 비율이 매우 낮습니다. AWL 단어를 반드시 더 사용하세요. (0.10 미만은 5.0점 이상 불가)")
+        elif academic_ratio < 0.15:
+            suggestions.append("학술 어휘 비율이 부족합니다. AWL 단어를 더 사용하세요.")
+        if type_token_ratio < 0.48:
+            suggestions.append("어휘 다양성이 매우 부족합니다. 반복 단어를 줄이고 동의어를 늘리세요. (0.48 미만은 5.0점 이상 불가)")
+        elif type_token_ratio < 0.55:
+            suggestions.append("어휘 다양성이 부족합니다. 반복 단어를 줄이세요.")
+        if not collocations_found:
+            suggestions.append("학술적 연결어구(collocation)를 더 활용하세요.")
+        return {
+            "total_words": total_words,
+            "unique_words": unique_words,
+            "academic_word_count": academic_word_count,
+            "academic_ratio": round(academic_ratio, 3),
+            "type_token_ratio": round(type_token_ratio, 3),
+            "sophistication_score": round(sophistication_score, 3),
+            "academic_words_found": academic_words_found,
+            "collocations_found": collocations_found,
+            "suggestions": suggestions or ["어휘 수준이 현존 최강수준입니다."]
+        }
+    except Exception as e:
         return {
             "total_words": 0,
             "unique_words": 0,
@@ -83,7 +127,7 @@ def analyze_vocabulary(text: str) -> dict:
             "sophistication_score": 0.0,
             "academic_words_found": [],
             "collocations_found": [],
-            "suggestions": [],
+            "suggestions": [f"어휘 분석 오류: {e}. Python 3.11+ 환경과 최신 requirements.txt를 확인하세요."]
         }
 
     unique = set(tokens)

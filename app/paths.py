@@ -109,6 +109,10 @@ def migrations_dir() -> Path:
     return _subdir("migrations")
 
 
+def models_dir() -> Path:
+    return _subdir("models")
+
+
 def legacy_project_data_dir() -> Path:
     """Phase 4까지 쓰이던 프로젝트 루트 `data/` 디렉터리 — migration의 원본 위치.
 

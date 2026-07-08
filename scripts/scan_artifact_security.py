@@ -80,6 +80,9 @@ def scan(app: Path) -> list[str]:
         violations.append(f"개발 파일 포함: {s}")
     for e in _find(app, "*expert_data*", "*.migration_backup*"):
         violations.append(f"전문가/백업 데이터 포함: {e}")
+    for m in _find(app, "*.gguf", "*.bin", "*.safetensors", "*.pt", "*.pth", "*.onnx"):
+        if m.stat().st_size > 10 * 1024 * 1024:
+            violations.append(f"모델 파일 의심 포함 ({m.stat().st_size / 1024 / 1024:.0f}MB): {m}")
 
     # 텍스트/설정 파일에서 API 키 패턴
     for f in app.rglob("*"):
