@@ -1,3 +1,21 @@
+					if let corrections = result.grammar_corrections, !corrections.isEmpty {
+						PanelCard(title: "GRAMMAR CORRECTIONS") {
+							ForEach(Array(corrections.prefix(8).enumerated()), id: \.offset) { _, c in
+								VStack(alignment: .leading, spacing: 2) {
+									Text("\(c.sentence)")
+										.font(.system(size: 11, design: .monospaced))
+										.foregroundStyle(UITheme.textMain)
+									Text("→ \(c.corrected)")
+										.font(.system(size: 11, weight: .bold, design: .monospaced))
+										.foregroundStyle(Color.blue)
+									Text("\(c.explanation)")
+										.font(.system(size: 10, design: .monospaced))
+										.foregroundStyle(UITheme.textSub)
+								}
+								.padding(.vertical, 4)
+							}
+						}
+					}
 import AppKit
 import Foundation
 import SwiftUI
@@ -754,14 +772,14 @@ private struct AppTextArea: NSViewRepresentable {
 		textView.isAutomaticQuoteSubstitutionEnabled = false
 		textView.isAutomaticTextReplacementEnabled = false
 		textView.isAutomaticDashSubstitutionEnabled = false
-		textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+		textView.font = NSFont.monospacedSystemFont(ofSize: 15, weight: .regular)
 		textView.textColor = NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.13, alpha: 1.0)
 		textView.insertionPointColor = NSColor(calibratedRed: 0.00, green: 0.36, blue: 0.73, alpha: 1.0)
 		textView.drawsBackground = true
 		textView.backgroundColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
 		textView.typingAttributes = [
 			.foregroundColor: NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.13, alpha: 1.0),
-			.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+			.font: NSFont.monospacedSystemFont(ofSize: 15, weight: .regular),
 		]
 		textView.isVerticallyResizable = true
 		textView.isHorizontallyResizable = false
@@ -769,16 +787,48 @@ private struct AppTextArea: NSViewRepresentable {
 		textView.minSize = NSSize(width: 0, height: 0)
 		textView.string = text.isEmpty ? "" : text
 		textView.delegate = context.coordinator
-		textView.textContainerInset = NSSize(width: 8, height: 8)
+		textView.textContainerInset = NSSize(width: 12, height: 12)
 		textView.textContainer?.widthTracksTextView = true
 		textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
 		textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+		textView.allowsTabInsertion = true
+		textView.isContinuousSpellCheckingEnabled = true
+		textView.isAutomaticSpellingCorrectionEnabled = true
+		textView.isAutomaticTextCompletionEnabled = true
+		textView.isAutomaticQuoteSubstitutionEnabled = false
+		textView.isAutomaticDashSubstitutionEnabled = false
+		textView.isAutomaticLinkDetectionEnabled = false
+		textView.isAutomaticDataDetectionEnabled = false
+		textView.isAutomaticTextReplacementEnabled = false
+		textView.isAutomaticTextCompletionEnabled = true
+		textView.smartInsertDeleteEnabled = true
+		textView.usesRuler = false
+		textView.usesFontPanel = false
+		textView.usesInspectorBar = false
+		textView.usesFindPanel = true
+		textView.usesFindBar = true
+		textView.acceptsGlyphInfo = false
+		textView.acceptsTouchEvents = true
+		textView.acceptsFirstResponder
 
 		if text.isEmpty {
 			textView.string = ""
 		}
 
 		scrollView.documentView = textView
+
+		// 생성 직후 포커스 시도 (두 번 보장)
+		DispatchQueue.main.async {
+			if let window = scrollView.window {
+				window.makeFirstResponder(textView)
+			}
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+			if let window = scrollView.window {
+				window.makeFirstResponder(textView)
+			}
+		}
+
 		return scrollView
 	}
 
@@ -788,13 +838,31 @@ private struct AppTextArea: NSViewRepresentable {
 		if textView.string != text {
 			textView.string = text
 		}
-		if shouldFocus, let window = nsView.window {
-			if window.firstResponder !== textView {
-				window.makeFirstResponder(textView)
-				textView.setSelectedRange(NSRange(location: textView.string.count, length: 0))
-			}
-			DispatchQueue.main.async {
-				shouldFocus = false
+		if shouldFocus {
+			if let window = nsView.window {
+				if window.firstResponder !== textView {
+					window.makeFirstResponder(textView)
+					textView.setSelectedRange(NSRange(location: textView.string.count, length: 0))
+				}
+				DispatchQueue.main.async {
+					shouldFocus = false
+				}
+			} else {
+				// window가 아직 attach되지 않은 경우 재시도 (2회 보장)
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+					if let window = nsView.window {
+						window.makeFirstResponder(textView)
+						textView.setSelectedRange(NSRange(location: textView.string.count, length: 0))
+						shouldFocus = false
+					}
+				}
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+					if let window = nsView.window {
+						window.makeFirstResponder(textView)
+						textView.setSelectedRange(NSRange(location: textView.string.count, length: 0))
+						shouldFocus = false
+					}
+				}
 			}
 		}
 	}
@@ -805,18 +873,21 @@ private struct PanelCard<Content: View>: View {
 	@ViewBuilder var content: Content
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 8) {
+		VStack(alignment: .leading, spacing: 10) {
 			Text(title)
-				.font(.system(size: 12, weight: .bold, design: .monospaced))
+				.font(.system(size: 13, weight: .bold, design: .monospaced))
 				.foregroundStyle(UITheme.accent)
+				.padding(.bottom, 2)
 			content
 		}
-		.padding(12)
+		.padding(16)
 		.background(
-			RoundedRectangle(cornerRadius: 10)
+			RoundedRectangle(cornerRadius: 12)
 				.fill(UITheme.panel)
-				.overlay(RoundedRectangle(cornerRadius: 10).stroke(UITheme.accentSoft, lineWidth: 1))
+				.shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
+				.overlay(RoundedRectangle(cornerRadius: 12).stroke(UITheme.accentSoft, lineWidth: 1))
 		)
+		.padding(.vertical, 2)
 	}
 }
 
@@ -839,6 +910,9 @@ private struct ContentView: View {
 			} detail: {
 				rightPanel
 			}
+		}
+		.onAppear {
+			shouldFocusEditor = true
 		}
 		.task {
 			vm.bootstrap()
@@ -1066,7 +1140,7 @@ private struct ContentView: View {
 
 			Group {
 				switch vm.selectedTab {
-				case .overview:
+				python3.11 --version				case .overview:
 					overviewTab
 				case .progress:
 					progressTab
@@ -1084,112 +1158,140 @@ private struct ContentView: View {
 		.background(UITheme.panelSoft.opacity(0.82))
 	}
 
-	private var overviewTab: some View {
-		Group {
-			if let result = vm.result {
-				ScrollView {
-					VStack(alignment: .leading, spacing: 12) {
-						Text("RESULT BLOCK")
-							.font(.system(size: 21, weight: .black, design: .monospaced))
-							.foregroundStyle(UITheme.textMain)
-
-						scoreCard(title: "TOEFL SCORE (MAX 6.0)", value: String(format: "%.1f", result.score_band_1_6))
-
-					// Target ETA
-					if let eta = result.target_eta {
-						PanelCard(title: "타겟 달성 예측") {
-							HStack(spacing: 16) {
-								VStack(alignment: .leading, spacing: 4) {
-									Text("예상 남은 횟수")
-										.font(.system(size: 10, design: .monospaced))
-										.foregroundStyle(UITheme.textSub)
-									Text(eta.estimated_attempts.map { "\($0)회" } ?? "-")
-										.font(.system(size: 18, weight: .black, design: .monospaced))
-										.foregroundStyle(UITheme.accent)
-								}
-								if let pace = eta.pace_label {
-									VStack(alignment: .leading, spacing: 4) {
-										Text("페이스")
-											.font(.system(size: 10, design: .monospaced))
-											.foregroundStyle(UITheme.textSub)
-										Text(pace)
-											.font(.system(size: 13, weight: .bold, design: .monospaced))
-											.foregroundStyle(UITheme.textMain)
-									}
-								}
-							}
-							if let msg = eta.message {
-								Text(msg)
-									.font(.system(size: 11, design: .monospaced))
-									.foregroundStyle(UITheme.textSub)
-							}
-						}
-					}
-
-					// Auto rewrite
-					if let autoRewrite = result.auto_rewrite_essay, !autoRewrite.isEmpty {
-						PanelCard(title: "AUTO.REWRITE") {
-							Text(autoRewrite)
-								.font(.system(size: 11, design: .monospaced))
-								.foregroundStyle(UITheme.textMain)
-							Button {
-								vm.copyToClipboard(autoRewrite)
-							} label: {
-								Label("교정문 복사", systemImage: "doc.on.doc")
-									.font(.system(size: 10, design: .monospaced))
-							}
-							.buttonStyle(.plain)
-							.foregroundStyle(UITheme.accent)
-						}
-					}
-
-					// Sentence highlights
-					if let highlights = result.score_highlights, !highlights.isEmpty {
-						PanelCard(title: "SENTENCE.SCORE") {
-							ForEach(Array(highlights.prefix(8).enumerated()), id: \.offset) { _, h in
-								HStack(alignment: .top, spacing: 8) {
-									Circle()
-										.fill(h.impact == "positive" ? Color.green.opacity(0.85)
-											: h.impact == "negative" ? Color.red.opacity(0.75)
-											: Color.orange.opacity(0.75))
-										.frame(width: 8, height: 8)
-										.padding(.top, 4)
-									VStack(alignment: .leading, spacing: 2) {
-										Text(h.sentence)
-											.font(.system(size: 11, design: .monospaced))
-											.foregroundStyle(UITheme.textMain)
-										Text(h.reason)
-											.font(.system(size: 10, design: .monospaced))
-											.foregroundStyle(UITheme.textSub)
-									}
-								}
-							}
-						}
-					}
-
-						textPanel(title: "SUMMARY.KO", body: result.bilingual_feedback.summary_ko)
-						textPanel(title: "SUMMARY.EN", body: result.bilingual_feedback.summary_en)
-						listPanel(title: "STRENGTHS", items: result.strengths)
-						listPanel(title: "WEAKNESSES", items: result.weaknesses)
-						listPanel(title: "ACTION.PLAN", items: result.action_plan)
-						listPanel(title: "WEEKLY.PLAN", items: result.weekly_plan)
-
-						PanelCard(title: "GRAMMAR.STAT") {
-							Text("TOTAL: \(result.grammar_stats.total)")
-								.font(.system(size: 13, weight: .bold, design: .monospaced))
-								.foregroundStyle(UITheme.textMain)
-							Text("TENSE \(result.grammar_stats.tense) | ARTICLE \(result.grammar_stats.article) | PREP \(result.grammar_stats.preposition)")
-								.foregroundStyle(UITheme.textSub)
-							Text("RUNON \(result.grammar_stats.run_on) | S-V \(result.grammar_stats.subject_verb) | PUNCT \(result.grammar_stats.punctuation)")
-								.foregroundStyle(UITheme.textSub)
-						}
-					}
-					.padding(16)
-				}
-			} else {
-				placeholder("RUN ANALYSIS를 눌러 결과를 생성하세요.")
-			}
-		}
+	   private var overviewTab: some View {
+		   Group {
+			   if let result = vm.result {
+				   ScrollView {
+					   VStack(alignment: .leading, spacing: 18) {
+						   // 1. 상단 주요 정보 카드 (점수/환산/요약)
+						   HStack(spacing: 24) {
+							   scoreCard(title: "TOEFL BAND (1-6)", value: String(format: "%.1f", result.score_band_1_6))
+							   scoreCard(title: "30점 환산", value: String(result.estimated_score_30))
+						   }
+						   .padding(.bottom, 2)
+						   Divider().padding(.vertical, 2)
+						   // 2. 요약 피드백만 상단 집중
+						   textPanel(title: "SUMMARY.KO", body: result.bilingual_feedback.summary_ko)
+						   // 3. "더보기"로 세부 정보 접기/펼치기
+						   DisclosureGroup("상세 정보 더보기") {
+							   VStack(alignment: .leading, spacing: 14) {
+								   textPanel(title: "SUMMARY.EN", body: result.bilingual_feedback.summary_en)
+								   listPanel(title: "STRENGTHS", items: result.strengths)
+								   listPanel(title: "WEAKNESSES", items: result.weaknesses)
+								   listPanel(title: "ACTION.PLAN", items: result.action_plan)
+								   if !result.weekly_plan.isEmpty {
+									   listPanel(title: "WEEKLY.PLAN", items: result.weekly_plan)
+								   }
+								   PanelCard(title: "GRAMMAR.STAT (문법 오류 수)") {
+									   HStack(spacing: 16) {
+										   Text("총합: \(result.grammar_stats.total)")
+											   .font(.system(size: 15, weight: .bold, design: .monospaced))
+											   .foregroundStyle(result.grammar_stats.total > 2 ? Color.red : UITheme.textMain)
+										   Text("TENSE \(result.grammar_stats.tense)")
+										   Text("ARTICLE \(result.grammar_stats.article)")
+										   Text("PREP \(result.grammar_stats.preposition)")
+										   Text("RUNON \(result.grammar_stats.run_on)")
+										   Text("S-V \(result.grammar_stats.subject_verb)")
+										   Text("PUNCT \(result.grammar_stats.punctuation)")
+									   }
+									   .font(.system(size: 12, design: .monospaced))
+									   .foregroundStyle(UITheme.textSub)
+								   }
+								   if let corrections = result.grammar_corrections, !corrections.isEmpty {
+									   PanelCard(title: "GRAMMAR CORRECTIONS (상위 8개)") {
+										   ForEach(Array(corrections.prefix(8).enumerated()), id: \.offset) { _, c in
+											   VStack(alignment: .leading, spacing: 2) {
+												   Text("\(c.sentence)")
+													   .font(.system(size: 11, design: .monospaced))
+													   .foregroundStyle(UITheme.textMain)
+												   Text("→ \(c.corrected)")
+													   .font(.system(size: 11, weight: .bold, design: .monospaced))
+													   .foregroundStyle(Color.blue)
+												   Text("\(c.explanation)")
+													   .font(.system(size: 10, design: .monospaced))
+													   .foregroundStyle(UITheme.textSub)
+											   }
+											   .padding(.vertical, 4)
+										   }
+									   }
+								   }
+								   if let highlights = result.score_highlights, !highlights.isEmpty {
+									   PanelCard(title: "SENTENCE.SCORE (문장별 영향)") {
+										   ForEach(Array(highlights.prefix(8).enumerated()), id: \.offset) { _, h in
+											   HStack(alignment: .top, spacing: 8) {
+												   Circle()
+													   .fill(h.impact == "positive" ? Color.green.opacity(0.85)
+														   : h.impact == "negative" ? Color.red.opacity(0.75)
+														   : Color.orange.opacity(0.75))
+													   .frame(width: 8, height: 8)
+													   .padding(.top, 4)
+												   VStack(alignment: .leading, spacing: 2) {
+													   Text(h.sentence)
+														   .font(.system(size: 11, design: .monospaced))
+														   .foregroundStyle(UITheme.textMain)
+													   Text(h.reason)
+														   .font(.system(size: 10, design: .monospaced))
+														   .foregroundStyle(UITheme.textSub)
+												   }
+											   }
+										   }
+									   }
+								   }
+								   if let autoRewrite = result.auto_rewrite_essay, !autoRewrite.isEmpty {
+									   PanelCard(title: "AUTO.REWRITE (AI 자동 교정문)") {
+										   Text(autoRewrite)
+											   .font(.system(size: 11, design: .monospaced))
+											   .foregroundStyle(UITheme.textMain)
+										   Button {
+											   vm.copyToClipboard(autoRewrite)
+										   } label: {
+											   Label("교정문 복사", systemImage: "doc.on.doc")
+												   .font(.system(size: 10, design: .monospaced))
+										   }
+										   .buttonStyle(.plain)
+										   .foregroundStyle(UITheme.accent)
+									   }
+								   }
+								   if let eta = result.target_eta {
+									   PanelCard(title: "타겟 달성 예상") {
+										   HStack(spacing: 16) {
+											   VStack(alignment: .leading, spacing: 4) {
+												   Text("예상 남은 횟수")
+													   .font(.system(size: 10, design: .monospaced))
+													   .foregroundStyle(UITheme.textSub)
+												   Text(eta.estimated_attempts.map { "\($0)회" } ?? "-")
+													   .font(.system(size: 18, weight: .black, design: .monospaced))
+													   .foregroundStyle(UITheme.accent)
+											   }
+											   if let pace = eta.pace_label {
+												   VStack(alignment: .leading, spacing: 4) {
+													   Text("페이스")
+														   .font(.system(size: 10, design: .monospaced))
+														   .foregroundStyle(UITheme.textSub)
+													   Text(pace)
+														   .font(.system(size: 13, weight: .bold, design: .monospaced))
+														   .foregroundStyle(UITheme.textMain)
+												   }
+											   }
+										   }
+										   if let msg = eta.message {
+											   Text(msg)
+												   .font(.system(size: 11, design: .monospaced))
+												   .foregroundStyle(UITheme.textSub)
+										   }
+									   }
+								   }
+							   }
+							   .padding(.top, 8)
+						   }
+						   .padding(.horizontal, 2)
+					   }
+					   .padding(20)
+				   }
+			   } else {
+				   placeholder("RUN ANALYSIS를 눌러 결과를 생성하세요.")
+			   }
+		   }
 	}
 
 	private var progressTab: some View {
@@ -1500,28 +1602,30 @@ private struct ContentView: View {
 	}
 
 	private func scoreCard(title: String, value: String) -> some View {
-		VStack(alignment: .leading, spacing: 5) {
+		VStack(alignment: .leading, spacing: 6) {
 			Text(title)
-				.font(.system(size: 11, weight: .bold, design: .monospaced))
+				.font(.system(size: 12, weight: .bold, design: .monospaced))
 				.foregroundStyle(UITheme.textSub)
 			Text(value)
-				.font(.system(size: 20, weight: .black, design: .monospaced))
+				.font(.system(size: 22, weight: .black, design: .monospaced))
 				.foregroundStyle(UITheme.textMain)
 		}
-		.padding(10)
+		.padding(14)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.background(
-			RoundedRectangle(cornerRadius: 10)
+			RoundedRectangle(cornerRadius: 12)
 				.fill(UITheme.panel)
-				.overlay(RoundedRectangle(cornerRadius: 10).stroke(UITheme.accentSoft, lineWidth: 1))
+				.overlay(RoundedRectangle(cornerRadius: 12).stroke(UITheme.accentSoft, lineWidth: 1))
 		)
+		.shadow(color: Color.black.opacity(0.03), radius: 1, x: 0, y: 1)
 	}
 
 	private func textPanel(title: String, body: String) -> some View {
 		PanelCard(title: title) {
 			Text(body)
-				.font(.system(size: 12, design: .monospaced))
+				.font(.system(size: 13, design: .monospaced))
 				.foregroundStyle(UITheme.textMain)
+				.padding(.vertical, 2)
 		}
 	}
 
@@ -1531,10 +1635,12 @@ private struct ContentView: View {
 				Text("-")
 					.foregroundStyle(UITheme.textSub)
 			} else {
-				ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
-					Text("\(idx + 1). \(item)")
-						.font(.system(size: 12, design: .monospaced))
-						.foregroundStyle(UITheme.textMain)
+				VStack(alignment: .leading, spacing: 4) {
+					ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+						Text("\(idx + 1). \(item)")
+							.font(.system(size: 13, design: .monospaced))
+							.foregroundStyle(UITheme.textMain)
+					}
 				}
 			}
 		}
