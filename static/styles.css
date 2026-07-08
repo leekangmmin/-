@@ -980,6 +980,54 @@ textarea:focus, input:focus, select:focus {
 }
 .bas-explanation.hidden { display: none; }
 
+/* ── 분석 모드 패널 (Phase 7) ──────────────────────────────────────── */
+.analysis-mode-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.analysis-mode-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sub);
+  border: 1px solid var(--color-border);
+}
+
+.analysis-mode-row.active {
+  background: var(--color-success-soft);
+  border-color: var(--color-success);
+}
+
+.analysis-mode-row .mode-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+}
+
+.analysis-mode-row .mode-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.analysis-mode-row .mode-info strong { font-size: var(--fs-small); color: var(--color-text); }
+.analysis-mode-row .mode-info small { font-size: var(--fs-caption); color: var(--color-text-sub); }
+.analysis-mode-row .mode-info small.muted { color: var(--color-text-muted); }
+
+.privacy-notice {
+  font-size: var(--fs-small);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  border-left: 3px solid var(--color-primary);
+}
+
 /* ── 접근성: 모션 최소화 ───────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

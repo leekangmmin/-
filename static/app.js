@@ -690,6 +690,131 @@ async function fetchAppStatus() {
   }
 }
 
+async function fetchLocalAiStatus() {
+  var statusText = document.getElementById("localAiStatusText");
+  var iconEl = document.getElementById("localAiIcon");
+  var rowEl = document.getElementById("localAiRow");
+  var perfEl = document.getElementById("localAiPerf");
+  var recEl = document.getElementById("localAiRecs");
+  var warmupBtn = document.getElementById("warmupLocalAiBtn");
+  var disableBtn = document.getElementById("disableLocalAiBtn");
+  var cloudStatusText = document.getElementById("cloudAiStatusText");
+  var cloudIconEl = document.getElementById("cloudAiIcon");
+  if (!statusText && !cloudStatusText) return;
+  try {
+    var res = await fetch("/api/local-ai/status");
+    if (!res.ok) throw new Error();
+    var data = await res.json();
+    var local = data.local_ai || {};
+    if (statusText && iconEl && rowEl) {
+      if (local.available) {
+        var modelName = local.model ? local.model.model_name || "" : "";
+        var status = local.status || "ready";
+        var statusLabels = {
+          "ready": "로컬 AI 연결됨 — " + modelName,
+          "ready_fast": "로컬 AI 연결됨 — " + modelName,
+          "ready_slow": "로컬 AI 느림 — " + modelName + " (응답 속도가 느릴 수 있어요)",
+          "timeout": "로컬 AI 시간 초과 — " + modelName + " (응답이 너무 오래 걸려요)",
+          "too_heavy": "로컬 AI 느림 — " + modelName + " (더 가벼운 모델을 권장해요)",
+        };
+        statusText.textContent = statusLabels[status] || ("사용 가능 — " + modelName);
+        if (status === "ready_slow" || status === "too_heavy" || status === "timeout") {
+          iconEl.textContent = "\u26A0\uFE0F";
+          rowEl.classList.add("active");
+        } else {
+          iconEl.textContent = "\u2705";
+          rowEl.classList.add("active");
+        }
+        if (perfEl && local.model && local.model.performance) {
+          var perf = local.model.performance;
+          var tps = perf.tokens_per_sec || "?";
+          perfEl.textContent = "속도: " + tps + " tok/s";
+          perfEl.classList.remove("hidden");
+        }
+        if (recEl && local.model && local.model.recommendations && local.model.recommendations.length) {
+          recEl.innerHTML = local.model.recommendations.map(function(r) { return "<li>" + r + "</li>"; }).join("");
+          recEl.classList.remove("hidden");
+        }
+        if (warmupBtn) warmupBtn.classList.remove("hidden");
+        if (disableBtn) disableBtn.style.display = "";
+      } else {
+        statusText.textContent = "로컬 AI 없음 — 모델이 설치되지 않았어요";
+        iconEl.textContent = "\u26AA";
+        rowEl.classList.remove("active");
+        if (warmupBtn) warmupBtn.classList.add("hidden");
+        if (disableBtn) disableBtn.style.display = "none";
+        if (perfEl) perfEl.classList.add("hidden");
+        if (recEl) recEl.classList.add("hidden");
+      }
+    }
+    // Load AI config to determine cloud AI status
+    try {
+      var aiCfg = await fetch("/api/ai/config");
+      if (aiCfg.ok) {
+        var cfg = await aiCfg.json();
+        if (cloudStatusText && cloudIconEl) {
+          var cloudAvailable = cfg.enabled && cfg.provider !== "local";
+          if (cloudAvailable) {
+            cloudStatusText.textContent = "설정됨 (" + cfg.provider + ")";
+            cloudIconEl.textContent = "\u2705";
+          } else {
+            cloudStatusText.textContent = "꺼짐";
+            cloudIconEl.textContent = "\u26AA";
+          }
+        }
+      }
+    } catch (_) {}
+  } catch (_) {
+    if (statusText) statusText.textContent = "상태 확인 실패";
+    if (iconEl) iconEl.textContent = "\u26A0\uFE0F";
+  }
+}
+
+async function testLocalAi() {
+  var statusText = document.getElementById("localAiStatusText");
+  if (statusText) statusText.textContent = "테스트 중… (로컬 AI 모델 분석이 오래 걸릴 수 있어요)";
+  try {
+    var res = await fetch("/api/local-ai/test", { method: "POST" });
+    var data = await res.json();
+    if (statusText) {
+      if (data.ok) {
+        var lat = data.latency_ms ? (" (" + (data.latency_ms / 1000).toFixed(1) + "초)") : "";
+        statusText.textContent = "연결 성공 — " + (data.provider_name || data.provider || "") + lat;
+      } else {
+        var msg = data.message || "알 수 없는 오류";
+        if (msg.indexOf("시간") > -1 || msg.indexOf("timeout") > -1) {
+          statusText.textContent = "시간 초과 — 로컬 AI 분석이 시간 안에 끝나지 않았어요. 기본 분석 결과는 정상적으로 유지됩니다.";
+        } else {
+          statusText.textContent = "연결 실패 — " + msg;
+        }
+      }
+    }
+    fetchLocalAiStatus();
+  } catch (_) {
+    if (statusText) statusText.textContent = "테스트 요청 실패 — 로컬 AI 서버를 확인하세요";
+  }
+}
+
+async function warmupLocalAi() {
+  var statusText = document.getElementById("localAiStatusText");
+  if (statusText) statusText.textContent = "모델 준비 중… (처음 실행 시 시간이 걸려요)";
+  try {
+    var res = await fetch("/api/local-ai/warmup", { method: "POST" });
+    var data = await res.json();
+    if (statusText) {
+      if (data.ok) {
+        var lat = data.latency_ms ? (" (" + (data.latency_ms / 1000).toFixed(1) + "초)") : "";
+        statusText.textContent = "모델 준비 완료" + lat + " — 이제 더 빠르게 분석할 수 있어요";
+      } else {
+        statusText.textContent = "모델 준비 실패 — " + (data.reason || "알 수 없는 오류");
+      }
+    }
+    fetchLocalAiStatus();
+  } catch (_) {
+    if (statusText) statusText.textContent = "모델 준비 요청 실패";
+  }
+}
+
 async function loadAiConfig() {
   try {
     const res = await fetch("/api/ai/config");
@@ -1585,13 +1710,16 @@ document.getElementById("refreshHistory").addEventListener("click", fetchHistory
 document.getElementById("refreshDashboard").addEventListener("click", fetchDashboard);
 saveAiConfigBtn.addEventListener("click", saveAiConfig);
 testAiConfigBtn.addEventListener("click", testAiConfig);
+document.getElementById("testLocalAiBtn").addEventListener("click", testLocalAi);
+var warmupBtn = document.getElementById("warmupLocalAiBtn");
+if (warmupBtn) warmupBtn.addEventListener("click", warmupLocalAi);
 copyMinimalBtn.addEventListener("click", function() { copyTextSafe(rewriteMinimalEl.textContent || "", "최소 수정문"); });
 copyAggressiveBtn.addEventListener("click", function() { copyTextSafe(rewriteAggressiveEl.textContent || "", "적극 수정문"); });
 
 fetchHistory();
 fetchDashboard();
 fetchAppStatus();
-loadBasItemOptions();
+fetchLocalAiStatus();
 loadAiConfig();
 loadDraft();
 initOnboarding();

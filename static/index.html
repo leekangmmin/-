@@ -358,15 +358,16 @@
     <section class="card config-card">
       <details>
         <summary>
-          <span>AI 연결 설정</span>
-          <span class="muted small">내장 분석 · ChatGPT · Claude · Gemini</span>
+          <span>클라우드 AI 연결 (선택)</span>
+          <span class="muted small">ChatGPT · Claude · Gemini — API 키가 있을 때만</span>
         </summary>
         <div class="config-body">
           <div class="section-head">
-            <h2 class="card-title">AI 연결 설정</h2>
+            <h2 class="card-title">클라우드 AI 연결</h2>
             <button id="saveAiConfigBtn" class="btn primary sm">저장</button>
           </div>
-          <p class="muted small">API 키는 이 기기의 로컬 DB에만 저장돼요. 외부로 전송되지 않아요.</p>
+          <p class="privacy-notice">기본 분석은 인터넷이 필요 없어요. 클라우드 AI는 사용자가 직접 켠 경우에만 답안이 외부로 전송돼요.</p>
+          <p class="muted small">API 키는 이 기기의 로컬 DB에만 저장돼요.</p>
           <div class="ai-config-grid">
             <label class="inline-label">공급자
               <select id="aiProviderSelect">
@@ -423,10 +424,38 @@
           <p class="status-highlight">현재 점수는 기본 채점 엔진으로 계산됩니다. AI 분석은 점수에 반영되지 않습니다.</p>
 
           <h3 class="card-subtitle">분석 모드</h3>
-          <ul class="status-list">
-            <li>현재 모드: <strong id="statusAnalysisMode">기본 분석 모드</strong> — 문법·구조·어휘 기반 분석을 사용하고 있어요.</li>
-            <li>AI 심층 분석(Claude): <span id="statusShadowState">비활성</span> — 활성화해도 결과는 내부 연구용으로만 저장되고, 여러분이 보는 점수에는 반영되지 않아요.</li>
-          </ul>
+          <div id="analysisModePanel" class="analysis-mode-panel">
+            <div class="analysis-mode-row active" id="offlineCoreRow">
+              <span class="mode-icon">&#9989;</span>
+              <div class="mode-info">
+                <strong>기본 분석</strong>
+                <small>항상 사용 가능 · 인터넷 필요 없음</small>
+                <small class="muted">문법·구조·어휘 기반 분석을 사용하고 있어요.</small>
+              </div>
+            </div>
+            <div class="analysis-mode-row" id="localAiRow">
+              <span class="mode-icon" id="localAiIcon">&#9898;</span>
+              <div class="mode-info">
+                <strong>로컬 AI 분석</strong>
+                <small id="localAiStatusText">확인 중…</small>
+                <small class="muted">설치된 로컬 모델로 더 자세한 첨삭을 제공해요. 답안은 기기 밖으로 나가지 않아요.</small>
+                <small id="localAiPerf" class="muted hidden"></small>
+                <ul id="localAiRecs" class="list muted hidden" style="font-size:0.8rem; margin-top:4px"></ul>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:4px; margin-left:auto">
+                <button id="testLocalAiBtn" class="btn ghost sm">테스트</button>
+                <button id="warmupLocalAiBtn" class="btn ghost sm hidden">모델 준비</button>
+              </div>
+            </div>
+            <div class="analysis-mode-row" id="cloudAiRow">
+              <span class="mode-icon" id="cloudAiIcon">&#9898;</span>
+              <div class="mode-info">
+                <strong>클라우드 AI 분석</strong>
+                <small id="cloudAiStatusText">꺼짐</small>
+                <small class="muted">선택한 외부 AI 서비스로 답안이 전송될 수 있어요. 사용자가 직접 켠 경우에만 작동해요.</small>
+              </div>
+            </div>
+          </div>
 
           <h3 class="card-subtitle">버전 정보</h3>
           <ul class="status-list">
