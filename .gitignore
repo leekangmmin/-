@@ -18,3 +18,4 @@ NativeMacApp/.build/
 .build-venv/
 build/
 dist/
+.vscode/
