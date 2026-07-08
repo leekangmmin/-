@@ -1,21 +1,73 @@
 __pycache__/
 *.pyc
 .venv/
-data/*.db
-.env
 .DS_Store
-data/app.log
-data/app.pid
-data/reports/
-data/real_llm_injection_results.json
-data/.migration_backup_v1/
+
+# Python / local virtual environments
+.build-venv/
+
+# Local app data, databases, logs, reports, and backups
+data/
+backups/
+exports/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.pid
+
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+
+# Native / Swift build artifacts
+NativeMacApp/.build/
+NativeMacApp/.swiftpm/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.dSYM/
+*.dSYM.zip
+
+# macOS app bundles and release artifacts
+*.app/
+*.dmg
+*.pkg
+*.zip
+release/
+artifacts/
 dist_macos/
 dist_windows/
-NativeMacApp/.build/
 
-# PyInstaller 빌드 산출물 (scripts/build_macos.sh) — 재현 가능한 빌드이므로
-# Git에 커밋하지 않는다. 필요하면 release artifact로 별도 보관한다.
-.build-venv/
+# Windows build artifacts
+*.exe
+*.msi
+*.msix
+*.nupkg
+windows/dist/
+windows/build/
+Output/
+
+# PyInstaller build artifacts are reproducible and must stay out of Git.
 build/
 dist/
+
+# Local AI model files
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.bin
+models/
+model_packs/
+
+# IDE/user local config
 .vscode/
+!.vscode/extensions.json
+!.vscode/tasks.json
+
+# Temporary reports/files
+OPENCODE_RESULT.md
+*.tmp
