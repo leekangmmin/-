@@ -8,7 +8,7 @@ from app.grammar import GRAMMAR_RULES_VERSION, GrammarSignals, analyze_grammar
 from app.models import PromptType, ScoreDimension
 
 # 점수 산출 로직 변경 시 버전을 올린다. 평가 결과에 함께 저장되어 재현성을 보장한다.
-SCORING_ENGINE_VERSION = "2.0.0"
+SCORING_ENGINE_VERSION = "2.1.0"
 RUBRIC_VERSION = f"heuristic-6dim-{SCORING_ENGINE_VERSION}+grammar-{GRAMMAR_RULES_VERSION}"
 
 # ── 점수 공식 변경 금지 게이트 ────────────────────────────────────────────

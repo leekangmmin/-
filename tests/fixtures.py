@@ -7,7 +7,7 @@
 
 # 이 파일의 답안 내용/구성을 바꾸면 올린다. 과거 실험 결과와 비교 시
 # 같은 고정 세트에서 측정했는지 확인하는 기준이 된다.
-EVALUATION_DATASET_VERSION = "1.0.0"
+EVALUATION_DATASET_VERSION = "1.1.0"
 
 # ── 품질 등급별 학술 토론 답안 ────────────────────────────────────────────
 
@@ -54,6 +54,21 @@ Sincerely,
 Minjun Lee"""
 
 EMAIL_LOW = """hello teacher i want more time for homework because i was sick, i can not finish it. please give me time. i will do quick. thank you"""
+
+EMAIL_MISSING_REQUIRED_POINT = """Dear Professor Kim,
+
+I am writing to ask for an extension for the final essay in your composition course. I was sick this week, so I could not work as quickly as usual. I understand that deadlines are important, and I appreciate your patience.
+
+Thank you for your understanding.
+
+Sincerely,
+Minjun Lee"""
+
+TEMPLATE_SPAM = """In today's society, everyone has different opinions about this issue. There are many reasons why this topic is very important. This essay will discuss both sides and explain why it matters to people.
+
+In today's society, many people think this is good because it is good. There are many reasons, and the first reason is that it is important. For example, people can learn things and improve things in many ways.
+
+In conclusion, I think this is very important. Everyone has different opinions, but this topic is useful for students, workers, and society."""
 
 # ── 평가용 문제(프롬프트) — 자체 제작 연습 문제 ──────────────────────────
 

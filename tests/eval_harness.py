@@ -28,6 +28,8 @@ from tests.fixtures import (
     DISCUSSION_OFF_TOPIC,
     EMAIL_HIGH,
     EMAIL_LOW,
+    EMAIL_MISSING_REQUIRED_POINT,
+    TEMPLATE_SPAM,
 )
 
 # 올바른 영어 문장 세트 — 오탐이 나오면 안 된다
@@ -115,6 +117,20 @@ def run() -> dict:
     report["prompt_fit_off_topic"] = fit_off
     report["off_topic_detected"] = fit_off < fit_on
 
+    from tests.fixtures import PROMPT_EMAIL_EXTENSION
+
+    email_fit_full = evaluate_prompt_fit(PROMPT_EMAIL_EXTENSION, EMAIL_HIGH)
+    email_fit_missing = evaluate_prompt_fit(PROMPT_EMAIL_EXTENSION, EMAIL_MISSING_REQUIRED_POINT)
+    spam_fit = evaluate_prompt_fit(PROMPT_DISCUSSION_INTERNSHIP, TEMPLATE_SPAM)
+    report["email_requirement_full"] = email_fit_full["score"]
+    report["email_requirement_missing"] = email_fit_missing["score"]
+    report["email_missing_required_detected"] = (
+        email_fit_missing["score"] < email_fit_full["score"]
+        and any("required:" in item for item in email_fit_missing["missing_keywords"])
+    )
+    report["template_spam_score"] = spam_fit["score"]
+    report["template_spam_detected"] = spam_fit["score"] <= 2.5 and "Template risk" in spam_fit["reason_en"]
+
     # 7) 평가 시간
     started = time.perf_counter()
     for _ in range(20):
@@ -135,6 +151,8 @@ def main() -> None:
     print(f"경계 입력 안전: {'OK' if report['boundary_inputs_ok'] else report['boundary_errors']}")
     print(f"인젝션 답안 점수(0-5): {report['injection_score_0_5']} (상위밴드 차단: {report['injection_blocked']})")
     print(f"주제 적합성 on/off-topic: {report['prompt_fit_on_topic']} / {report['prompt_fit_off_topic']} (이탈 감지: {report['off_topic_detected']})")
+    print(f"이메일 요구사항 full/missing: {report['email_requirement_full']} / {report['email_requirement_missing']} (누락 감지: {report['email_missing_required_detected']})")
+    print(f"템플릿 스팸 prompt-fit: {report['template_spam_score']} (감지: {report['template_spam_detected']})")
     print(f"평균 채점 시간: {report['avg_scoring_ms']}ms")
 
     failures = []
@@ -150,6 +168,10 @@ def main() -> None:
         failures.append("인젝션 미차단")
     if not report["off_topic_detected"]:
         failures.append("주제 이탈 미감지")
+    if not report["email_missing_required_detected"]:
+        failures.append("이메일 요구사항 누락 미감지")
+    if not report["template_spam_detected"]:
+        failures.append("템플릿 스팸 미감지")
 
     if failures:
         print(f"\nFAIL: {', '.join(failures)}")

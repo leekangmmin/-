@@ -59,6 +59,15 @@ STOPWORDS = {
 CLAIM_MARKERS = {"i think", "i believe", "i agree", "i disagree", "my view", "i argue"}
 EVIDENCE_MARKERS = {"for example", "for instance", "because", "according to", "research", "data"}
 EXPLANATION_MARKERS = {"therefore", "this means", "as a result", "so", "thus"}
+TEMPLATE_SPAM_MARKERS = {
+    "in today's society",
+    "nowadays many people",
+    "there are many reasons",
+    "this essay will discuss",
+    "everyone has different opinions",
+    "i want discuss about this topic",
+    "in conclusion, i think this is very important",
+}
 
 _EMAIL_OPEN_RE = re.compile(
     r"^\s*(dear\b|hi\b|hello\b|good morning\b|good afternoon\b|to whom it may concern)",
@@ -95,6 +104,87 @@ def _keywords(text: str, top_n: int = 8) -> list[str]:
     words = [w for w in _tokens(text) if len(w) >= 4 and w not in STOPWORDS]
     counts = Counter(words)
     return [w for w, _ in counts.most_common(top_n)]
+
+
+def _stem_token(token: str) -> str:
+    if len(token) > 5 and token.endswith("ies"):
+        return token[:-3] + "y"
+    if len(token) > 5 and token.endswith(("ing", "ers")):
+        return token[:-3]
+    if len(token) > 4 and token.endswith(("ed", "es")):
+        return token[:-2]
+    if len(token) > 4 and token.endswith("s"):
+        return token[:-1]
+    return token
+
+
+def _has_any(text: str, patterns: tuple[str, ...]) -> bool:
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns)
+
+
+def _prompt_requirements(prompt_text: str) -> list[tuple[str, tuple[str, ...]]]:
+    lower = prompt_text.lower()
+    requirements: list[tuple[str, tuple[str, ...]]] = []
+
+    if "email" in lower or "write to" in lower or "professor" in lower:
+        requirements.append(("recipient/tone", (r"\b(dear|hello|hi|professor|teacher)\b",)))
+        requirements.append(("clear request or purpose", (r"\b(request|ask|would like|i am writing|please|could you)\b",)))
+    if "reason" in lower or "explain why" in lower:
+        requirements.append(("reason", (r"\b(because|since|due to|as a result|reason)\b",)))
+    if "progress" in lower:
+        requirements.append(("progress", (r"\b(progress|draft|outline|finished|completed|revised|citations?)\b",)))
+    if "deadline" in lower or "new deadline" in lower or "extension" in lower:
+        requirements.append(("proposed deadline", (r"\b(submit by|turn .* in by|by friday|by monday|by tuesday|by wednesday|by thursday|tomorrow|next week|new deadline)\b",)))
+
+    if "do you think" in lower or "agree" in lower or "disagree" in lower or "position" in lower:
+        requirements.append(("clear position", (r"\b(i believe|i think|i agree|i disagree|in my view|my position|i support)\b",)))
+    if "reason" in lower or "reasons" in lower or "why" in lower:
+        requirements.append(("reasoning", (r"\b(because|therefore|so|this means|as a result|one reason|another reason)\b",)))
+    if "example" in lower or "specific" in lower:
+        requirements.append(("specific example", (r"\b(for example|for instance|when i|in my experience|research|study|data)\b",)))
+    if "classmate" in lower or "students said" in lower or "discussion" in lower:
+        requirements.append(("discussion engagement", (r"\b(as .* said|responding to|classmate|student|discussion|build on)\b",)))
+
+    return requirements
+
+
+def _requirement_match(prompt_text: str, essay_text: str) -> tuple[list[str], list[str]]:
+    requirements = _prompt_requirements(prompt_text)
+    if not requirements:
+        return [], []
+    met: list[str] = []
+    missing: list[str] = []
+    for label, patterns in requirements:
+        if _has_any(essay_text, patterns):
+            met.append(label)
+        else:
+            missing.append(label)
+    return met, missing
+
+
+def _template_spam_penalty(essay_text: str) -> tuple[float, list[str]]:
+    lowered = essay_text.lower()
+    reasons: list[str] = []
+    marker_hits = [m for m in TEMPLATE_SPAM_MARKERS if m in lowered]
+    if marker_hits:
+        reasons.append("generic template phrase")
+
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", essay_text) if s.strip()]
+    starts = [" ".join(_tokens(s)[:3]) for s in sentences if len(_tokens(s)) >= 3]
+    repeated_starts = [start for start, count in Counter(starts).items() if count >= 3]
+    if repeated_starts:
+        reasons.append("repeated sentence opening")
+
+    tokens = [t for t in _tokens(essay_text) if len(t) >= 4]
+    lexical_ratio = len(set(tokens)) / max(len(tokens), 1)
+    if len(tokens) >= 80 and lexical_ratio < 0.34:
+        reasons.append("low lexical variety")
+
+    if len(reasons) >= 2:
+        return 1.0, reasons
+    if reasons:
+        return 0.5, reasons
+    return 0.0, reasons
 
 
 def _match_case(source: str, replacement: str) -> str:
@@ -148,40 +238,57 @@ def _starts_with_vowel_sound(word: str) -> bool:
 
 
 def evaluate_prompt_fit(prompt_text: str, essay_text: str) -> dict:
-    pkeys = _keywords(prompt_text, top_n=10)
-    essay_words = set(_tokens(essay_text))
-    matched = [k for k in pkeys if k in essay_words]
-    missing = [k for k in pkeys if k not in essay_words]
+    pkeys = _keywords(prompt_text, top_n=12)
+    essay_tokens = _tokens(essay_text)
+    essay_words = set(essay_tokens)
+    essay_stems = {_stem_token(t) for t in essay_tokens}
+    matched = [k for k in pkeys if k in essay_words or _stem_token(k) in essay_stems]
+    missing = [k for k in pkeys if k not in matched and _stem_token(k) not in essay_stems]
 
     overlap_ratio = (len(matched) / len(pkeys)) if pkeys else 0.0
+    met_reqs, missing_reqs = _requirement_match(prompt_text, essay_text)
+    req_total = len(met_reqs) + len(missing_reqs)
+    requirement_ratio = (len(met_reqs) / req_total) if req_total else 0.0
+    template_penalty, template_reasons = _template_spam_penalty(essay_text)
 
-    score = 2.0
-    if overlap_ratio >= 0.6:
-        score += 2.2
-    elif overlap_ratio >= 0.4:
-        score += 1.5
-    elif overlap_ratio >= 0.2:
-        score += 0.8
-
-    if any(marker in essay_text.lower() for marker in CLAIM_MARKERS):
+    score = 1.5 + (overlap_ratio * 2.0)
+    if req_total:
+        score += requirement_ratio * 1.5
+    elif any(marker in essay_text.lower() for marker in CLAIM_MARKERS):
         score += 0.4
+
+    if _has_any(essay_text, (r"\b(for example|for instance|because|according to|research|data)\b",)):
+        score += 0.4
+
+    if len(essay_tokens) < 90 and overlap_ratio < 0.3 and req_total:
+        score -= 0.5
+    score -= template_penalty
+
+    if pkeys and overlap_ratio < 0.15 and (not req_total or requirement_ratio < 0.35):
+        score = min(score, 2.0)
+
     score = max(0.0, min(5.0, round(score * 2) / 2))
 
     reason_en = (
         f"Keyword overlap {len(matched)}/{len(pkeys)}. "
+        f"Requirements met {len(met_reqs)}/{req_total}. "
         f"Matched: {', '.join(matched[:4]) if matched else 'none'}"
     )
     reason_ko = (
-        f"문제 핵심 키워드 일치 {len(matched)}/{len(pkeys)}. "
+        f"문제 핵심 키워드 일치 {len(matched)}/{len(pkeys)}, "
+        f"요구사항 충족 {len(met_reqs)}/{req_total}. "
         f"일치 단어: {', '.join(matched[:4]) if matched else '없음'}"
     )
+    if template_reasons:
+        reason_en += f". Template risk: {', '.join(template_reasons)}"
+        reason_ko += f". 템플릿 위험: {', '.join(template_reasons)}"
 
     return {
         "score": score,
         "reason_en": reason_en,
         "reason_ko": reason_ko,
         "matched_keywords": matched[:8],
-        "missing_keywords": missing[:8],
+        "missing_keywords": ([f"required:{r}" for r in missing_reqs] + missing)[:8],
     }
 
 
