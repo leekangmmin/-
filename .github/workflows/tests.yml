@@ -27,8 +27,18 @@ jobs:
       - name: Compile check
         run: python -m py_compile app/*.py desktop/*.py scripts/*.py
 
+      - name: Repository hygiene check
+        run: |
+          if git ls-files | grep -E '(\.db$|\.sqlite$|\.sqlite3$|\.env$|\.gguf$|\.safetensors$|\.onnx$|\.pt$|\.pth$|\.dmg$|\.zip$|\.exe$|\.msi$|\.app/|NativeMacApp/\.build/|(^|/)dist/|(^|/)build/|OPENCODE_RESULT\.md$|\.tmp$)'; then
+            echo "Tracked release artifact, DB, model, secret, or temporary file detected."
+            exit 1
+          fi
+
       - name: Run tests
         run: pytest -q
 
       - name: Scoring quality gate
         run: python -m tests.eval_harness
+
+      - name: Local AI dry-run
+        run: python scripts/run_local_ai_validation.py --dry-run

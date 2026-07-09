@@ -81,3 +81,31 @@ PASS: 모든 품질 게이트 통과
 - Offline Core 점수 불변
 - Build a Sentence 불변
 - Backup/Restore 불변
+
+---
+
+## Phase 9 실제 런타임 확인 (macOS 개발 환경)
+
+명령:
+
+```bash
+.venv/bin/python scripts/run_local_ai_validation.py --dry-run
+.venv/bin/python scripts/run_local_ai_validation.py --provider rule --fixture grammar_errors --limit 2
+ollama list
+.venv/bin/python scripts/run_local_ai_validation.py --provider ollama --fixture grammar_errors --timeout 180 --warmup --limit 1
+.venv/bin/python scripts/run_local_ai_validation.py --provider llamacpp --fixture grammar_errors --timeout 180 --warmup --limit 1
+```
+
+결과:
+
+- Rule provider: ready, evidence 4/4 verified, score leak 없음.
+- Ollama: `qwen2.5:7b` 감지, 모델 크기 4.7GB.
+- Ollama warmup: 10.443s, actual analysis latency 19.659s, tokens/sec 17.9.
+- Ollama evidence: 3/3 verified, suggestion count OK, score leak 없음.
+- llama.cpp: runtime_missing.
+
+해석:
+
+- `qwen2.5:7b`는 사용 가능하지만 느린 편이다. Windows 일반 사용자에게 기본 요구사항으로 삼으면 안 된다.
+- 더 가벼운 모델 추천 로직과 timeout fallback이 필요하다.
+- Local AI는 보조 피드백 전용이며 production 표시 점수를 바꾸지 않는다.

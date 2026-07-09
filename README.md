@@ -5,20 +5,20 @@
 <h1 align="center">토플 라이팅 채점기</h1>
 
 <p align="center">
-  <b>API·인터넷 없이도 바로 쓰는 2026 개정 TOEFL Writing 연습·첨삭 데스크톱 앱</b><br/>
-  <sub>문법·어휘·구조 기반 오프라인 채점 · 성장 대시보드 · PDF 리포트 · 문장 조립 연습</sub>
+  <b>API·인터넷 없이도 바로 쓰는 TOEFL Writing 연습·첨삭 앱</b><br/>
+  <sub>문법·어휘·구조 기반 Offline Core · 성장 대시보드 · PDF 리포트 · 문장 조립 연습</sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%2012%2B-000000?style=flat-square&logo=apple&logoColor=white"/>
-  <img src="https://img.shields.io/badge/tests-237%20passing-17a05d?style=flat-square"/>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20planned-000000?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-288%20passing-17a05d?style=flat-square"/>
   <img src="https://img.shields.io/badge/version-0.6.0%20(internal%20RC)-3182f6?style=flat-square"/>
   <img src="https://img.shields.io/badge/offline-core-8b5cf6?style=flat-square"/>
   <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square"/>
 </p>
 
 <p align="center">
-  <a href="#-내려받기">내려받기</a> ·
+  <a href="#-실행하기">실행하기</a> ·
   <a href="#-주요-기능">주요 기능</a> ·
   <a href="#-개발자로-실행하기">개발자 실행</a> ·
   <a href="#-아키텍처">아키텍처</a> ·
@@ -59,20 +59,40 @@
 
 ---
 
-## 📦 내려받기
+## 📦 실행하기
 
-이 앱은 현재 **macOS 내부 릴리스 후보(v0.6.0)** 단계입니다.
+이 앱은 현재 **v0.6.0 내부 릴리스 후보** 단계입니다. 기본 기능은 API 키 없이 작동하지만,
+공개 무료 배포용 서명·공증·Windows 실기 빌드는 아직 완료되지 않았습니다.
 
-1. [**Releases**](https://github.com/leekangmmin/-/releases) 에서 최신 `TOEFL-Writing-macOS-<버전>.dmg` 를 내려받으세요.
-2. DMG를 열고 앱을 **Applications** 폴더로 드래그합니다.
-3. 처음 실행 시 macOS가 개발자 확인 경고를 띄우면, 앱을 **우클릭 → 열기**로 실행하세요.
+### macOS
 
-> ⚠️ **정직한 안내:** 이 빌드는 Apple Developer 인증서로 **서명·공증되지 않았습니다**
-> (ad-hoc 서명 상태). 따라서 Gatekeeper 경고를 우회해야 실행되며, 정식 외부 배포용이
-> 아닌 **내부 테스트용**입니다. 서명·공증이 완료되기 전까지는 신뢰하는 본인 기기에서만
-> 사용하시길 권장합니다. Windows 빌드는 아직 제공되지 않습니다.
+1. 내부 테스트 빌드는 GitHub Releases의 DMG/ZIP으로 배포할 수 있습니다.
+2. Apple Developer ID 서명·공증 전에는 Gatekeeper 경고가 예상됩니다.
+3. 외부 공개 배포 전에는 `docs/release-checklist.md`와 `docs/macos-user-guide.md`를 확인하세요.
 
-터미널·Python 설치는 필요하지 않습니다 — 더블클릭으로 실행되는 네이티브 앱입니다.
+### Windows
+
+Windows 빌드 스크립트는 준비되어 있지만, 이 저장소에서는 아직 실제 Windows 머신에서
+최종 smoke test가 완료되지 않았습니다.
+
+```powershell
+.\windows\build_windows.ps1
+```
+
+완성된 내부 알파 산출물은 `dist_windows\TOEFLScorer.exe`로 생성됩니다. 서명 전에는
+SmartScreen 경고가 예상됩니다. 자세한 절차는 `docs/windows-user-guide.md`와
+`docs/windows-release-report.md`를 보세요.
+
+### 브라우저 / 자체 호스팅
+
+개발 또는 개인 서버에서는 FastAPI가 정적 UI를 함께 제공합니다.
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+브라우저에서 `http://127.0.0.1:8000`을 열면 됩니다. 공개 no-download 서비스는 별도
+호스팅·보안·요금 통제가 필요하며 아직 완료된 PWA가 아닙니다.
 
 ---
 
@@ -102,7 +122,7 @@ cd toefl-writing-scorer
 
 python3.11 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt pytest
 
 # ① 브라우저에서 개발 서버로 실행
 uvicorn app.main:app --reload
@@ -115,8 +135,9 @@ python -m desktop.launcher
 ### 테스트 & 품질 게이트
 
 ```bash
-pytest -q                        # 237개 테스트
+pytest -q                        # 288개 테스트
 python -m tests.eval_harness     # 채점 품질 회귀 게이트(오탐·순위·재현성)
+python scripts/run_local_ai_validation.py --dry-run
 ```
 
 ### macOS 앱 빌드 (릴리스 파이프라인)
@@ -157,8 +178,8 @@ static/             토스 스타일 웹 UI (외부 CDN 의존성 0)
 | 모드 | 상태 | 설명 |
 |---|---|---|
 | **오프라인 코어** | ✅ 기본 | 문법·어휘·구조 기반 채점. API·인터넷 불필요 |
-| **클라우드 AI** | 🔧 선택 | Claude 등 심층 분석. 기본 비활성 · **점수에 개입하지 않음** · 사용자가 직접 켜야 함 |
-| **로컬 AI** | 🚧 예정 | 온디바이스 모델 확장 구조만 준비 |
+| **로컬 AI** | 🔧 선택 | Ollama/llama.cpp 감지 구조. 없으면 규칙 기반 분석으로 fallback · 점수 미반영 |
+| **클라우드 AI** | 🔧 선택 | 기본 비활성 · 사용자가 직접 켠 경우에만 전송 · 점수 미반영 |
 
 문서: [`docs/`](docs/) — 아키텍처, 오프라인 코어, 백업·복원, 빌드, 보안 감사,
 Phase별 검증 보고서 등.
@@ -181,10 +202,10 @@ Phase별 검증 보고서 등.
 투명하게 밝힙니다.
 
 - Apple Developer 서명·공증 (현재 ad-hoc, **외부 배포 불가**)
-- Windows 빌드 (미검증)
+- Windows 실기 빌드/스모크 테스트 (Windows 머신에서 미검증)
 - 실제 대규모 클라우드 AI 채점 품질 검증
 - 전문가 채점 데이터 기반 정확도 캘리브레이션
-- 온디바이스 로컬 AI
+- 공개 hosted web/PWA 배포
 
 밴드 점수는 **공개 기준을 참고한 연습용 추정치**이며 **ETS 공식 점수가 아닙니다.**
 문장 조립 문항은 전부 자체 제작이며 ETS 공식 문항이 아닙니다.
