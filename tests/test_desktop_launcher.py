@@ -55,6 +55,14 @@ class TestServerLifecycle:
         assert HOST == "127.0.0.1"
 
 
+class TestWindowsLauncher:
+    def test_windows_launcher_reuses_shared_desktop_lifecycle(self):
+        import desktop.launcher
+        import windows.app_launcher
+
+        assert windows.app_launcher.main is desktop.launcher.main
+
+
 class TestSingleInstanceLock:
     def test_no_existing_lock_returns_none(self, tmp_path):
         lock = SingleInstanceLock(tmp_path / "app.lock")

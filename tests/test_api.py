@@ -27,6 +27,17 @@ def test_health(client):
     assert res.json()["status"] == "ok"
 
 
+def test_capabilities_default_to_offline_core_without_required_keys(client):
+    res = client.get("/api/capabilities")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["offline_core"] is True
+    assert body["api_key_required"] is False
+    assert body["cloud_ai"] is False
+    assert body["pwa"] is False
+    assert body["score_policy"] == "heuristic_score_only"
+
+
 def test_evaluate_full_flow(client):
     res = client.post(
         "/api/evaluate",

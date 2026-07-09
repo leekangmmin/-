@@ -32,7 +32,6 @@ if (Test-Path $distDir) {
   --name "TOEFLScorer" `
   --distpath $distDir `
   --paths "." `
-  --add-data "app;app" `
   --add-data "static;static" `
   windows\app_launcher.py
 

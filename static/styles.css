@@ -1028,6 +1028,172 @@ textarea:focus, input:focus, select:focus {
   border-left: 3px solid var(--color-primary);
 }
 
+/* ── 좁은 모바일/태블릿 보정 ─────────────────────────────────────── */
+@media (max-width: 834px) {
+  .layout {
+    max-width: 100%;
+  }
+
+  .section-head,
+  .history-row,
+  .backup-row,
+  .bas-picker-row,
+  .ai-config-actions {
+    flex-wrap: wrap;
+  }
+
+  .history-row,
+  .backup-row {
+    align-items: flex-start;
+  }
+
+  .history-actions {
+    width: 100%;
+    margin-left: 0;
+    margin-top: var(--sp-2);
+  }
+}
+
+@media (max-width: 430px) {
+  :root {
+    --fs-h1: 1.5rem;
+    --fs-h2: 1rem;
+    --fs-body: 0.875rem;
+  }
+
+  .layout {
+    padding: var(--sp-4) var(--sp-2) var(--sp-8);
+  }
+
+  .hero {
+    padding-left: var(--sp-2);
+    padding-right: var(--sp-2);
+  }
+
+  .hero-brand,
+  .input-controls,
+  .control-group,
+  .btn-row,
+  .bas-actions,
+  .onboarding-actions {
+    align-items: stretch;
+  }
+
+  .practice-badge,
+  .optional-tag,
+  .summary-hint {
+    display: block;
+    margin-top: var(--sp-1);
+    margin-left: 0;
+  }
+
+  .inline-label {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .inline-label input[type="number"] {
+    width: 96px;
+  }
+
+  .input-controls .btn,
+  .control-group .btn,
+  .btn-row .btn,
+  .bas-actions .btn,
+  .ai-config-actions .btn,
+  .onboarding-actions .btn {
+    width: 100%;
+  }
+
+  .score-ring-wrap {
+    width: 112px;
+    height: 112px;
+  }
+
+  .score-secondary {
+    grid-template-columns: 1fr;
+    text-align: left;
+  }
+
+  .score-secondary-item {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    text-align: left;
+  }
+
+  .rubric-row {
+    grid-template-columns: 1fr;
+    gap: var(--sp-2);
+  }
+
+  .rubric-val {
+    text-align: left;
+  }
+
+  .kv,
+  .section-details > summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .template-block,
+  .edit-item,
+  .serif-text,
+  .essay-highlight,
+  .engine-info,
+  .dash-cell,
+  .delete-confirm,
+  .privacy-notice {
+    padding: var(--sp-3);
+  }
+
+  .dash-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trend-tabs .btn {
+    flex: 1 1 0;
+  }
+
+  .bas-answer-item {
+    align-items: flex-start;
+  }
+
+  .bas-icon-btn {
+    flex-shrink: 0;
+  }
+
+  .onboarding-dialog {
+    width: calc(100vw - 24px);
+    padding: var(--sp-5);
+  }
+
+  .onboarding-steps li {
+    padding-left: 36px;
+  }
+}
+
+@media (max-width: 360px) {
+  .layout {
+    padding-left: var(--sp-1);
+    padding-right: var(--sp-1);
+  }
+
+  .card,
+  .score-hero {
+    padding-left: var(--sp-3);
+    padding-right: var(--sp-3);
+  }
+
+  .stat-pill,
+  .meta-chip,
+  .badge {
+    max-width: 100%;
+    white-space: normal;
+  }
+}
+
 /* ── 접근성: 모션 최소화 ───────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

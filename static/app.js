@@ -112,6 +112,7 @@ let pendingAutoSubmit = false;
 let dashboardCache = null;
 let activeTrend = "score";
 let lastResult = null;
+let appCapabilities = null;
 
 /* ── Draft helpers ───────────────────────────────────────────────────── */
 const DRAFT_KEY = "toefl_draft_text";
@@ -690,6 +691,46 @@ async function fetchAppStatus() {
   }
 }
 
+async function fetchCapabilities() {
+  try {
+    const res = await fetch("/api/capabilities");
+    if (!res.ok) throw new Error();
+    appCapabilities = await res.json();
+  } catch (_) {
+    appCapabilities = {
+      mode: "desktop_or_web",
+      offline_core: true,
+      local_ai: true,
+      cloud_ai: false,
+      backup_restore: true,
+      pwa: false,
+    };
+  }
+
+  const summaryEl = document.getElementById("statusSummaryLine");
+  const localAiRow = document.getElementById("localAiRow");
+  const cloudAiRow = document.getElementById("cloudAiRow");
+  const cloudAiConfigSection = document.getElementById("cloudAiConfigSection");
+  const dataManageSection = document.getElementById("dataManageSection");
+  const cloudStatusText = document.getElementById("cloudAiStatusText");
+  const cloudIconEl = document.getElementById("cloudAiIcon");
+
+  const webMode = appCapabilities.mode === "web";
+  if (summaryEl && webMode) summaryEl.textContent = "웹 모드 · 기본 분석 사용 가능";
+
+  if (localAiRow && !appCapabilities.local_ai) localAiRow.classList.add("hidden");
+  if (cloudAiConfigSection && webMode) cloudAiConfigSection.classList.add("hidden");
+  if (dataManageSection && !appCapabilities.backup_restore) dataManageSection.classList.add("hidden");
+
+  if (cloudAiRow && webMode) {
+    cloudAiRow.classList.toggle("active", Boolean(appCapabilities.cloud_ai));
+    if (cloudStatusText) {
+      cloudStatusText.textContent = appCapabilities.cloud_ai ? "서버 AI 사용 가능" : "서버 AI 준비 전";
+    }
+    if (cloudIconEl) cloudIconEl.textContent = appCapabilities.cloud_ai ? "\u2705" : "\u26AA";
+  }
+}
+
 async function fetchLocalAiStatus() {
   var statusText = document.getElementById("localAiStatusText");
   var iconEl = document.getElementById("localAiIcon");
@@ -701,6 +742,7 @@ async function fetchLocalAiStatus() {
   var cloudStatusText = document.getElementById("cloudAiStatusText");
   var cloudIconEl = document.getElementById("cloudAiIcon");
   if (!statusText && !cloudStatusText) return;
+  if (appCapabilities && !appCapabilities.local_ai) return;
   try {
     var res = await fetch("/api/local-ai/status");
     if (!res.ok) throw new Error();
@@ -1647,11 +1689,12 @@ async function evaluateEssay(isExamMode) {
     downloadPdfBtn.disabled = false;
     autoReevalBtn.disabled = !(result.auto_rewrite_essay && result.auto_rewrite_essay.trim());
     downloadPdfBtn.dataset.submissionId = String(data.submission_id);
-    statusText.textContent = "채점 완료 (ID: " + data.submission_id + ")";
     // 채점 완료된 답안의 draft는 정리한다 — 단 화면의 텍스트는 그대로 유지되므로
     // 사용자가 제출 직전 내용을 잃지 않는다.
     fetch("/api/draft", { method: "DELETE" }).catch(function() {});
     await Promise.all([fetchHistory(), fetchDashboard()]);
+    clearInterval(stageTimer);
+    statusText.textContent = "채점 완료 (ID: " + data.submission_id + ")";
   } catch(err) {
     statusText.textContent = "채점하지 못했어요: " + err.message + " — 작성한 답안은 그대로 남아 있어요. 다시 시도해 주세요.";
   } finally {
@@ -1719,7 +1762,7 @@ copyAggressiveBtn.addEventListener("click", function() { copyTextSafe(rewriteAgg
 fetchHistory();
 fetchDashboard();
 fetchAppStatus();
-fetchLocalAiStatus();
+fetchCapabilities().then(function() { fetchLocalAiStatus(); });
 loadAiConfig();
 loadDraft();
 initOnboarding();

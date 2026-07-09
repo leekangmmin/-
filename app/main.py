@@ -67,7 +67,7 @@ from app.build_a_sentence_items import BUILD_A_SENTENCE_ITEMS, BUILD_SENTENCE_IT
 from app.db import get_submission, init_db, list_all_results, list_recent, save_bas_attempt, save_submission
 from app.env_loader import load_local_env
 from app.feedback import build_feedback
-from app.paths import exports_dir, resource_path, user_data_dir
+from app.paths import exports_dir, is_frozen, resource_path, user_data_dir
 from app.models import (
     TargetEta,
     SentenceVariety,
@@ -242,6 +242,34 @@ def health() -> dict[str, Any]:
         "offline_core_available": True,
         # shadow 활성 여부만 노출한다 — API 키 존재 여부/모델명 같은 세부 정보는 노출하지 않는다.
         "shadow_enabled": load_shadow_config().enabled,
+    }
+
+
+@app.get("/api/capabilities")
+def capabilities() -> dict[str, Any]:
+    """Runtime feature flags for desktop, self-hosted web, and future hosted web."""
+    raw_mode = os.getenv("TOEFL_APP_MODE", "").strip().lower()
+    web_mode = raw_mode == "web" or os.getenv("TOEFL_WEB_MODE", "").strip() == "1"
+    mode = "web" if web_mode else ("desktop" if is_frozen() else "desktop_or_web")
+    runtime_ai = ai_runtime_config()
+    provider = str(runtime_ai.get("provider", "local")).strip().lower()
+    cloud_ai_enabled = bool(ai_enabled(runtime_ai) and provider in {"openai", "claude", "gemini"})
+
+    return {
+        "mode": mode,
+        "offline_core": True,
+        "api_key_required": False,
+        "local_ai": not web_mode,
+        "cloud_ai": cloud_ai_enabled,
+        "backup_restore": not web_mode,
+        "pdf": True,
+        "build_a_sentence": True,
+        "draft_autosave": True,
+        "history": True,
+        "pwa": False,
+        "admin_api": False,
+        "hosted_ai": False,
+        "score_policy": "heuristic_score_only",
     }
 
 
