@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20planned-000000?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-288%20passing-17a05d?style=flat-square"/>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Docker%20(any%20OS)-000000?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-302%20passing-17a05d?style=flat-square"/>
   <img src="https://img.shields.io/badge/version-0.6.0%20(internal%20RC)-3182f6?style=flat-square"/>
   <img src="https://img.shields.io/badge/offline-core-8b5cf6?style=flat-square"/>
   <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square"/>
@@ -61,38 +61,49 @@
 
 ## 📦 실행하기
 
-이 앱은 현재 **v0.6.0 내부 릴리스 후보** 단계입니다. 기본 기능은 API 키 없이 작동하지만,
-공개 무료 배포용 서명·공증·Windows 실기 빌드는 아직 완료되지 않았습니다.
+이 앱은 현재 **v0.6.0 내부 릴리스 후보** 단계입니다. 기본 기능은 API 키 없이 작동합니다.
 
-### macOS
+### 🐳 브라우저로 바로 쓰기 (Docker, 모든 OS — Windows 포함)
 
-1. 내부 테스트 빌드는 GitHub Releases의 DMG/ZIP으로 배포할 수 있습니다.
-2. Apple Developer ID 서명·공증 전에는 Gatekeeper 경고가 예상됩니다.
-3. 외부 공개 배포 전에는 `docs/release-checklist.md`와 `docs/macos-user-guide.md`를 확인하세요.
+**Windows 실행 파일이 아직 없어도, Docker만 있으면 Windows에서도 브라우저로 바로 쓸 수 있습니다.**
 
-### Windows
+```bash
+git clone https://github.com/leekangmmin/-.git toefl-writing-scorer
+cd toefl-writing-scorer
 
-Windows 빌드 스크립트는 준비되어 있지만, 이 저장소에서는 아직 실제 Windows 머신에서
-최종 smoke test가 완료되지 않았습니다.
-
-```powershell
-.\windows\build_windows.ps1
+docker build -t toefl-writing-scorer .
+docker run -p 8000:8000 toefl-writing-scorer
 ```
 
-완성된 내부 알파 산출물은 `dist_windows\TOEFLScorer.exe`로 생성됩니다. 서명 전에는
-SmartScreen 경고가 예상됩니다. 자세한 절차는 `docs/windows-user-guide.md`와
-`docs/windows-release-report.md`를 보세요.
+브라우저에서 `http://localhost:8000`을 엽니다. API 키·인터넷 상의 외부 AI 호출
+없이 채점·기록·PDF·문장 조립 연습이 모두 작동합니다. 실제로 빌드·실행해
+검증한 절차이며(`./scripts/docker_sanity_test.sh`), PDF의 한글 텍스트도
+정상 렌더링됩니다.
 
-### 브라우저 / 자체 호스팅
+> ⚠️ **정직한 안내:** 이것은 로컬에서 직접 띄우는 Docker 컨테이너입니다.
+> 아직 실제 공개 URL로 상시 서비스되는 hosted 데모는 없습니다(`Hosted demo: pending`).
+> 데스크톱 앱과 달리 답안이 채점을 위해 이 서버(본인 컴퓨터 안의 컨테이너)로
+> 전송됩니다 — 자세한 차이는 [`docs/web-privacy.md`](docs/web-privacy.md) 참고.
+> 여러 사람이 접속하는 배포 방법은 [`docs/hosted-web-deployment.md`](docs/hosted-web-deployment.md)를 보세요.
 
-개발 또는 개인 서버에서는 FastAPI가 정적 UI를 함께 제공합니다.
+Python 설치 없이 개발 서버로만 실행하려면:
 
 ```bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-브라우저에서 `http://127.0.0.1:8000`을 열면 됩니다. 공개 no-download 서비스는 별도
-호스팅·보안·요금 통제가 필요하며 아직 완료된 PWA가 아닙니다.
+### 🍎 macOS
+
+1. 내부 테스트 빌드는 GitHub Releases의 DMG/ZIP으로 배포할 수 있습니다.
+2. Apple Developer ID 서명·공증 전에는 Gatekeeper 경고가 예상됩니다.
+3. 외부 공개 배포 전에는 `docs/release-checklist.md`와 `docs/macos-user-guide.md`를 확인하세요.
+
+### 🪟 Windows
+
+**네이티브 `.exe` 데스크톱 앱은 아직 제공되지 않습니다.** Windows 빌드 스크립트는
+준비되어 있지만 실제 Windows 머신에서의 최종 smoke test가 완료되지 않았습니다
+(`docs/windows-release-report.md`). **지금 Windows에서 쓰려면 위의 Docker 경로를
+사용하세요** — Windows에서도 Docker Desktop만 있으면 동일하게 작동합니다.
 
 ---
 
@@ -135,7 +146,7 @@ python -m desktop.launcher
 ### 테스트 & 품질 게이트
 
 ```bash
-pytest -q                        # 288개 테스트
+pytest -q                        # 302개 테스트
 python -m tests.eval_harness     # 채점 품질 회귀 게이트(오탐·순위·재현성)
 python scripts/run_local_ai_validation.py --dry-run
 ```
@@ -193,7 +204,9 @@ Phase별 검증 보고서 등.
 - **작성 중 복구** — 앱이 강제 종료돼도 작성하던 답안을 되살립니다.
 - **백업 · 복원** — 설정에서 백업을 만들고 되돌릴 수 있으며, 백업 파일에는 **API 키가 담기지 않습니다.**
 - **안전한 삭제** — 전체 삭제 전 자동 백업을 만들어 실수로 지워도 복구할 수 있습니다.
-- **로컬 서버** — `127.0.0.1` 에만 바인딩하고 외부 네트워크에 노출하지 않습니다.
+- **로컬 서버** — 데스크톱 앱은 `127.0.0.1` 에만 바인딩합니다. Docker/hosted 실행은
+  브라우저 접속을 위해 의도적으로 `0.0.0.0`에 바인딩하며, 이 경우 답안은 채점을 위해
+  서버로 전송됩니다 — 정확한 차이는 [`docs/web-privacy.md`](docs/web-privacy.md) 참고.
 
 ---
 
@@ -202,10 +215,12 @@ Phase별 검증 보고서 등.
 투명하게 밝힙니다.
 
 - Apple Developer 서명·공증 (현재 ad-hoc, **외부 배포 불가**)
-- Windows 실기 빌드/스모크 테스트 (Windows 머신에서 미검증)
+- Windows 네이티브 `.exe` 빌드/스모크 테스트 (Windows 머신에서 미검증 — Docker로 대체 가능)
 - 실제 대규모 클라우드 AI 채점 품질 검증
 - 전문가 채점 데이터 기반 정확도 캘리브레이션
-- 공개 hosted web/PWA 배포
+- 실제 URL로 상시 서비스되는 공개 hosted 데모 (`Hosted demo: pending`, Docker 이미지 자체는 검증됨)
+- 공개 배포용 IP rate limit·계정 시스템 (자세한 한계는 [`docs/public-demo-safety.md`](docs/public-demo-safety.md))
+- PWA 설치(홈 화면 추가) 지원
 
 밴드 점수는 **공개 기준을 참고한 연습용 추정치**이며 **ETS 공식 점수가 아닙니다.**
 문장 조립 문항은 전부 자체 제작이며 ETS 공식 문항이 아닙니다.
