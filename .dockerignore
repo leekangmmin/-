@@ -1,0 +1,48 @@
+# Dockerfile이 필요한 파일만 명시적으로 COPY하므로 이 목록은 2차 방어선이다
+# (빌드 컨텍스트 전송 자체를 줄이고, 실수로 넓은 COPY를 추가해도 새지 않게).
+
+.git
+.github
+.claude
+
+# 가상환경/빌드 산출물
+.venv
+.build-venv
+build
+dist
+__pycache__
+*.pyc
+*.pyo
+
+# 비밀정보·사용자 데이터·DB — 절대 이미지에 넣지 않는다
+.env
+*.env
+data
+*.db
+*.sqlite
+*.sqlite3
+
+# 데스크톱 패키징/네이티브 셸 — 웹 이미지에는 불필요
+desktop
+packaging
+NativeMacApp
+windows
+실행.command
+*.app
+*.dmg
+*.zip
+*.exe
+*.msi
+
+# 테스트/문서/스크립트 — 런타임에 불필요(이미지 크기·공격 표면 최소화)
+tests
+scripts
+docs
+*.md
+
+# 모델 파일 — 이 이미지는 로컬 AI를 포함하지 않는다
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth

@@ -1003,9 +1003,15 @@ def download_report(submission_id: int) -> FileResponse:
     unicode_font_enabled = False
     report_font_name = "Helvetica"
     unicode_candidates = [
+        # macOS
         Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
         Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),
         Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+        # Linux/Docker — fonts-noto-cjk 계열 패키지가 설치된 경우의 표준 경로.
+        # hosted web 모드(리눅스 컨테이너)에서도 한글 PDF가 깨지지 않게 한다.
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+        Path("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc"),
     ]
     for unicode_font_path in unicode_candidates:
         if not unicode_font_path.exists():
