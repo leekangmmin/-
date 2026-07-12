@@ -1,0 +1,13 @@
+.web-layout { max-width: 920px; }
+.web-logo { width: 38px; height: 38px; border-radius: 10px; }
+.privacy-note { margin: 0; color: var(--color-muted, #667085); font-size: .9rem; }
+.web-score { min-width: 170px; display: flex; flex-direction: column; align-items: center; padding: 1rem; border-radius: 18px; background: linear-gradient(145deg,#3157d5,#6a7fe8); color: white; }
+.web-score strong { font-size: 3rem; line-height: 1; }
+.web-score span { margin-top: .5rem; font-size: .85rem; }
+.next-action { padding: 1rem; border-radius: 12px; background: #f4f6ff; }
+.starter-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: .75rem; }
+.starter { padding: .9rem; border: 1px solid #dce2f5; border-radius: 12px; background: #fafbff; }
+.web-footer { padding: 2rem 0 3rem; text-align: center; color: #667085; font-size: .85rem; }
+.web-footer p { margin: .3rem; }
+.web-footer a { color: #3157d5; }
+@media (max-width: 680px) { .starter-grid { grid-template-columns: 1fr; } .score-hero-main { flex-direction: column; } .web-score { width: 100%; } }

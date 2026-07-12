@@ -83,6 +83,15 @@ class TemplateCoach(BaseModel):
     closing_templates: list[str]
 
 
+class HighScoreStructureGuide(BaseModel):
+    task_type: PromptType
+    detected: list[str]
+    missing: list[str]
+    next_action: str
+    template_spam_risk: bool
+    safe_sentence_starters: list[str]
+
+
 class ScoreHighlight(BaseModel):
     sentence: str
     impact: Literal["positive", "negative", "neutral"]
@@ -250,6 +259,7 @@ class EvaluationResult(BaseModel):
     sample_comparison: SampleComparison
     bilingual_feedback: BilingualFeedback
     template_coach: TemplateCoach
+    high_score_structure: HighScoreStructureGuide
     score_highlights: list[ScoreHighlight]
     weakness_dictionary: list[WeaknessCard]
     personalization: PersonalizationAdvice

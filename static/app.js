@@ -1646,6 +1646,11 @@ async function evaluateEssay(isExamMode) {
     renderList(strengthsEl, result.strengths);
     renderList(weaknessesEl, result.weaknesses);
     renderList(actionPlanEl, result.action_plan);
+    const structure = result.high_score_structure || {};
+    renderList(document.getElementById("highScoreDetected"), structure.detected || ["아직 감지된 항목이 없습니다."]);
+    renderList(document.getElementById("highScoreMissing"), structure.missing || ["핵심 구조가 모두 포함되었습니다."]);
+    setText(document.getElementById("highScoreNext"), structure.next_action || "-");
+    setText(document.getElementById("highScoreStarters"), (structure.safe_sentence_starters || []).join(" / ") || "-");
     renderSentenceEdits(result.sentence_edits);
 
     setText(templateOpeningEl, result.template_coach.opening_templates.join("  /  "));

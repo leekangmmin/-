@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#3157d5">
+  <meta name="description" content="브라우저에서 바로 사용하는 무료 TOEFL Writing 연습용 채점기">
+  <title>토플 라이팅 채점기 - 웹앱</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="logo.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="web.css">
+</head>
+<body>
+  <main class="layout web-layout">
+    <header class="hero">
+      <div class="hero-brand"><img src="logo.png" class="web-logo" alt=""><span class="hero-name">토플 라이팅 채점기</span><span class="practice-badge">무료 웹앱</span></div>
+      <h1>답안을 붙여넣으면<br>바로 구조를 분석해요</h1>
+      <p class="sub">2026 개정 유형 · 설치와 로그인 없이 · 답안은 이 브라우저 안에서만 처리</p>
+    </header>
+
+    <section class="card input-card" aria-labelledby="writeTitle">
+      <h2 id="writeTitle" class="card-title">답안 작성</h2>
+      <details class="prompt-details"><summary>문제 지문 입력 <span class="optional-tag">선택</span></summary><textarea id="promptText" rows="4" placeholder="문제 지문을 붙여넣으면 주제 관련성을 함께 확인합니다."></textarea></details>
+      <textarea id="essayText" rows="15" autofocus spellcheck="true" placeholder="Write an Email 또는 Academic Discussion 답안을 입력하세요."></textarea>
+      <div class="input-meta-row"><span id="typeBadge" class="detect-badge detect-none">유형 감지 대기</span><div class="live-stats"><span id="wordCount" class="stat-pill">단어 0</span><span id="saveState" class="stat-pill">이 기기에 자동 저장</span></div></div>
+      <div class="input-footer"><p class="privacy-note">🔒 서버 전송 없음 · API 키 없음</p><div class="input-controls"><button id="clearBtn" class="btn ghost">비우기</button><button id="scoreBtn" class="btn primary">채점하기</button></div></div>
+      <p id="status" class="status-text" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="results" class="result-stack hidden" aria-label="채점 결과">
+      <article class="card score-hero">
+        <div class="score-hero-main"><div class="web-score"><strong id="bandScore">-</strong><span>/ 6.0 예상 밴드</span></div><div class="score-hero-info"><p class="score-label"><span id="taskName" class="task-tag"></span> 연습용 평가</p><p id="summary" class="score-summary"></p></div></div>
+        <p class="disclaimer">공개된 평가 요소를 참고한 결정론적 연습용 추정치이며 ETS 공식 점수가 아닙니다.</p>
+      </article>
+
+      <article class="card"><h2 class="card-title">영역별 점수</h2><div id="dimensions" class="rubric-bars"></div></article>
+      <article class="card"><h2 class="card-title">고득점 구조 체크</h2><div class="two-col"><div><h3 class="sub-title">감지됨</h3><ul id="detected" class="list check-list"></ul></div><div><h3 class="sub-title">보완 필요</h3><ul id="missing" class="list warn-list"></ul></div></div><p class="next-action"><strong>다음 한 가지:</strong> <span id="nextAction"></span></p></article>
+      <div class="two-col"><article class="card"><h2 class="card-title">잘한 점</h2><ul id="strengths" class="list check-list"></ul></article><article class="card"><h2 class="card-title">보완할 점</h2><ul id="weaknesses" class="list warn-list"></ul></article></div>
+      <article class="card"><h2 class="card-title">안전한 문장 시작 아이디어</h2><div id="starters" class="starter-grid"></div><p class="muted small">답안 전체를 외우는 템플릿이 아니라, 자신의 근거를 이어 쓰기 위한 짧은 출발점입니다.</p></article>
+    </section>
+
+    <footer class="web-footer"><p>Offline Core Web 1.0 · 데이터는 외부로 전송되지 않습니다.</p><p><a href="https://github.com/leekangmmin/-" rel="noopener">GitHub 저장소</a></p></footer>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>

@@ -105,6 +105,7 @@ from app.models import (
     SubmissionHistoryItem,
     SubmissionHistoryResponse,
     TemplateCoach,
+    HighScoreStructureGuide,
     WeaknessCard,
     VocabAnalysisRequest,
     VocabAnalysisResponse,
@@ -128,6 +129,7 @@ from app.local_ai import get_local_ai_manager
 from app.db import get_setting, set_setting
 from app.models import EngineInfo
 from app.scorer import analyze_essay, grammar_cap_status, score_essay, score_essay_detailed
+from app.high_score_patterns import structure_guide
 from app.versions import (
     CALIBRATION_VERSION,
     EXAM_SPEC_VERSION,
@@ -352,6 +354,7 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
     sample_data = sample_compare(payload.essay_text, prompt_type)
     historical_rows = list_all_results(limit=200)
     template_data = template_coach(prompt_type)
+    structure_guide_data = structure_guide(payload.essay_text, prompt_type)
     highlight_data = score_highlights(payload.essay_text)
     weakness_data = weakness_dictionary(payload.essay_text, grammar_stats_data, historical_rows)
     personalization_data = personalization_advice(historical_rows)
@@ -469,6 +472,7 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
             )
         ),
         template_coach=TemplateCoach(**template_data),
+        high_score_structure=HighScoreStructureGuide(**structure_guide_data),
         score_highlights=[ScoreHighlight(**item) for item in highlight_data],
         weakness_dictionary=[WeaknessCard(**item) for item in weakness_data],
         personalization=PersonalizationAdvice(**personalization_data),

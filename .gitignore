@@ -52,6 +52,7 @@ Output/
 # PyInstaller build artifacts are reproducible and must stay out of Git.
 build/
 dist/
+dist_pages/
 
 # Local AI model files
 *.gguf
@@ -71,3 +72,9 @@ model_packs/
 # Temporary reports/files
 OPENCODE_RESULT.md
 *.tmp
+
+# Private writing corpora and derived local reports (never commit raw answers)
+private_corpus/
+corpus_raw/
+high_score_answers/
+*.corpus.json

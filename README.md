@@ -10,8 +10,12 @@
 </p>
 
 <p align="center">
+  <a href="https://leekangmmin.github.io/-/"><strong>🌐 설치 없이 웹앱 바로 사용하기</strong></a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Docker%20(any%20OS)-000000?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-302%20passing-17a05d?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-309%20passing-17a05d?style=flat-square"/>
   <img src="https://img.shields.io/badge/version-0.6.0%20(internal%20RC)-3182f6?style=flat-square"/>
   <img src="https://img.shields.io/badge/offline-core-8b5cf6?style=flat-square"/>
   <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square"/>
@@ -62,6 +66,13 @@
 ## 📦 실행하기
 
 이 앱은 현재 **v0.6.0 내부 릴리스 후보** 단계입니다. 기본 기능은 API 키 없이 작동합니다.
+
+### 🌐 GitHub에서 바로 쓰기
+
+[웹앱 열기](https://leekangmmin.github.io/-/) — 설치, 로그인, API 키가 필요 없습니다.
+답안은 서버로 전송되지 않고 현재 브라우저에서만 분석됩니다. GitHub Pages 버전은
+구조·내용·일관성·예시·문법·어휘 진단과 고득점 구조 체크에 집중한 경량 버전입니다.
+기록·PDF·AI 확장 기능이 필요하면 아래 Docker 또는 데스크톱 버전을 사용하세요.
 
 ### 🐳 브라우저로 바로 쓰기 (Docker, 모든 OS — Windows 포함)
 
