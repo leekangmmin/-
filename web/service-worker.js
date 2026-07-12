@@ -1,4 +1,4 @@
-const CACHE="toefl-scorer-web-v2";
+const CACHE="toefl-scorer-web-v6";
 const ASSETS=["./","index.html","styles.css","web.css","app.js","logo.png","manifest.webmanifest"];
 self.addEventListener("install",event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS))));
 self.addEventListener("activate",event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key))))));

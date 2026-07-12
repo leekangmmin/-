@@ -75,7 +75,7 @@ def test_engine_metadata_is_complete(client):
 
     # 현재는 순수 휴리스틱 채점이므로 명시적으로 표시돼야 한다
     assert engine["provider"] == "heuristic"
-    assert engine["calibration_version"] == "uncalibrated"
+    assert engine["calibration_version"] == "private-high-score-aggregate-v1"
     assert "not-applicable" in engine["model"]
 
 

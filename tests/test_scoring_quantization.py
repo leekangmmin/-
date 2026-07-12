@@ -49,6 +49,12 @@ class TestQuantizationMetadata:
         assert breakdown.scoring_formula_version == SCORING_FORMULA_VERSION
         assert breakdown.scoring_formula_version  # not empty
 
+    def test_calibration_metadata_is_explicit(self):
+        breakdown = score_essay_detailed(DISCUSSION_HIGH, "academic_discussion")
+        assert breakdown.calibration_adjustment >= 0.0
+        if breakdown.calibration_adjustment:
+            assert breakdown.calibration_reason
+
     def test_grammar_cap_metadata_consistent(self):
         breakdown = score_essay_detailed(DISCUSSION_LOW, "academic_discussion")
         if breakdown.grammar_cap_applied:

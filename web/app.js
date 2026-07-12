@@ -14,7 +14,7 @@ const PATTERNS = {
   email: {
     greeting:/^\s*(dear|hello|hi|good (morning|afternoon)|to whom it may concern)\b/im,
     purpose:/\b(i am writing (to|concerning|regarding)|i would like to|i am contacting you)\b/i,
-    situation:/\b(unfortunately|because|due to|the problem|the issue|specifically)\b/i,
+    situation:/\b(unfortunately|especially|specifically|because|due to|after|before|during|when|even though|although|until|the problem|the issue)\b/i,
     request:/\b(could you please|would you please|i would be grateful if|i would appreciate it if|please)\b/i,
     second:/\b(i would also|also appreciate|in addition|and let me know|as well)\b/i,
     closing:/\b(sincerely|best regards|kind regards|regards|yours truly)\b/i
@@ -35,6 +35,7 @@ function count(text, re) { return (text.match(re) || []).length; }
 function clamp(n,min,max) { return Math.max(min,Math.min(max,n)); }
 function quarter(n) { return Math.round(clamp(n,0,5)*4)/4; }
 function half(n) { return Math.round(clamp(n,0,5)*2)/2; }
+function halfBand(n) { return Math.round(clamp(n,1,6)*2)/2; }
 
 function detectType(text) {
   let signals = 0;
@@ -45,9 +46,24 @@ function detectType(text) {
 }
 
 function analyzeStructure(text,type) {
-  const detected = Object.entries(PATTERNS[type]).filter(([,re]) => re.test(text)).map(([key]) => key);
-  const missing = Object.keys(PATTERNS[type]).filter((key) => !detected.includes(key));
-  return {detected,missing};
+  const entries = Object.entries(PATTERNS[type]);
+  const detected = entries.filter(([,re]) => re.test(text)).map(([key]) => key);
+  let required = entries.map(([key]) => key);
+  if (type === "email" && /\b(express (?:my|our) (?:sincere )?gratitude|writing to thank|would (?:also )?like to thank|thank you for)\b/i.test(text)) {
+    required = required.filter(key => key !== "request");
+  }
+  const missing = required.filter((key) => !detected.includes(key));
+  const requiredDetected = required.filter(key => detected.includes(key));
+  return {detected:requiredDetected,missing,requiredCount:required.length};
+}
+
+function emailSignals(text) {
+  const ss=sentences(text);
+  const details=count(text,/\b(unfortunately|especially|specifically|because|due to|after|before|during|when|even though|although|until|already|free|vip|mobile phone|deadline|schedule|order|reservation|visit|tour|workshop|assignment|draft|coupon|passes?)\b/gi);
+  const polite=count(text,/\b(could you please|would you please|would (?:also )?(?:appreciate|be grateful)|thank you|truly appreciate|your (?:understanding|assistance|consideration)|sincerely|best regards|kind regards)\b/gi);
+  const flow=count(text,/\b(after|before|during|even though|although|until|especially|specifically|once again|also|because|therefore|as a result|in addition)\b/gi);
+  const detailSentences=ss.filter(s=>words(s).length>=10&&!/^\s*(dear|hello|hi|sincerely|regards)/i.test(s)).length;
+  return {details,polite,flow,detailSentences,purpose:PATTERNS.email.purpose.test(text)};
 }
 
 function score(text,type) {
@@ -56,21 +72,34 @@ function score(text,type) {
   const transitions = count(text,/\b(however|therefore|moreover|furthermore|in addition|for example|for instance|as a result|consequently|thus|overall)\b/gi);
   const evidence = count(text,/\b(because|for example|for instance|according to|research|study|data|as a result)\b/gi);
   const avg = ws.length / Math.max(ss.length,1), diversity = unique.size / Math.max(ws.length,1);
-  const structureMoves = analyzeStructure(text,type).detected.length;
-  const structureTotal = Object.keys(PATTERNS[type]).length;
+  const structureAnalysis=analyzeStructure(text,type), structureMoves=structureAnalysis.detected.length;
+  const structureTotal=structureAnalysis.requiredCount;
+  const email=type==="email"?emailSignals(text):null;
   const target = type === "email" ? 100 : 120;
   const structure = quarter(1.2 + 2.5*(structureMoves/structureTotal) + Math.min(paragraphs,4)*.25);
-  const content = quarter(1.4 + Math.min(ws.length/target,1)*1.2 + Math.min(evidence,4)*.4 + (prompt.value.trim() ? topicFit(prompt.value,text)*.8 : .4));
-  const coherence = quarter(1.8 + Math.min(transitions,5)*.35 + (paragraphs>=3?.7:0) + (diversity>=.45?.5:0));
-  const detail = quarter(1.4 + Math.min(evidence,4)*.55 + (ss.length>=7?.7:.2));
+  const content = type==="email"
+    ? quarter(1.4+Math.min(ws.length/target,1)*1.2+(email.purpose?.8:0)+Math.min(email.details,4)*.2+(email.polite>=2?.4:0)+(prompt.value.trim()?topicFit(prompt.value,text)*.8:.4))
+    : quarter(1.4+Math.min(ws.length/target,1)*1.2+Math.min(evidence,4)*.4+(prompt.value.trim()?topicFit(prompt.value,text)*.8:.4));
+  const flowHits=type==="email"?Math.max(transitions,email.flow):transitions;
+  const coherence = quarter(1.8+Math.min(flowHits,5)*.35+(paragraphs>=3?.7:0)+(diversity>=.45?.5:0)+(type==="email"&&email.detailSentences>=4?.5:0));
+  const detail = type==="email"
+    ? quarter(1.4+(email.details>=6||email.detailSentences>=6?2:email.details>=3||email.detailSentences>=4?1.4:.7)+(ss.length>=7?1:.2)+(avg>=12?.5:0)+(email.details>=3&&flowHits>=2?.25:0))
+    : quarter(1.4+Math.min(evidence,4)*.55+(ss.length>=7?.7:.2));
   const grammar = quarter(2 + (avg>=10&&avg<=28?1:0) + (ss.every(s=>words(s).length<=36)?1:0) + (ss.length>=6?.5:0));
-  const vocabulary = quarter(2 + (diversity>=.55?1.5:diversity>=.45?.8:.3) + Math.min(transitions,4)*.25);
+  const vocabulary = quarter(2+(diversity>=.55?1.5:diversity>=.45?.8:.3)+Math.min(flowHits,4)*.25+(type==="email"&&email.polite>=3?.5:0));
   const dims = [{name:"Structure",score:structure},{name:"Content",score:content},{name:"Coherence",score:coherence},{name:"Example",score:detail},{name:"Grammar",score:grammar},{name:"Vocabulary",score:vocabulary}];
   let raw = dims.reduce((sum,d)=>sum+d.score*(d.name==="Grammar"?2.4:1),0)/7.4-.55;
   if (ws.length < target) raw -= .35;
   if (paragraphs <= 1) raw -= .35;
-  if (!evidence) raw -= .2;
-  return {dims,internal:half(raw),band:half(clamp(raw+1,1,6)),words:ws.length,paragraphs,transitions,evidence,diversity};
+  if (!evidence && type!=="email") raw -= .2;
+  if (type==="email") {
+    if (!email.purpose) raw -= .25;
+    if (!email.details && email.detailSentences<2) raw -= .2;
+    if (ws.length>=target&&diversity>=.48&&email.purpose&&email.polite>=2&&email.detailSentences>=4) raw += .35;
+  } else if (ws.length>=target&&diversity>=.48&&evidence>=2&&transitions>=2&&/\b(i (?:firmly |strongly )?(?:believe|agree|disagree|maintain|support)|in my view)\b/i.test(text)) {
+    raw += .35;
+  }
+  return {dims,internal:half(raw),band:halfBand(raw+1),words:ws.length,paragraphs,transitions,evidence,diversity};
 }
 
 function topicFit(promptText,answerText) {
@@ -89,7 +118,7 @@ function render() {
   if (wc<60) { $("status").textContent="최소 60단어 이상 작성해 주세요."; return; }
   const type=detectType(text), result=score(text,type), moves=analyzeStructure(text,type);
   $("bandScore").textContent=result.band.toFixed(1); $("taskName").textContent=type==="email"?"Write an Email":"Academic Discussion";
-  $("summary").textContent=`${wc}단어 답안입니다. 핵심 구조 ${moves.detected.length}/${Object.keys(PATTERNS[type]).length}개가 감지됐습니다.`;
+  $("summary").textContent=`${wc}단어 답안입니다. 핵심 구조 ${moves.detected.length}/${moves.requiredCount}개가 감지됐습니다.`;
   renderBars(result.dims); list("detected",moves.detected.map(x=>LABELS[x]),"아직 감지된 항목이 없습니다."); list("missing",moves.missing.map(x=>LABELS[x]),"핵심 구조가 모두 포함됐습니다.");
   $("nextAction").textContent=moves.missing.length?`${LABELS[moves.missing[0]]}을(를) 한 문장으로 보완하세요.`:"각 근거가 질문에 직접 연결되는지 검토하세요.";
   const strengths=[],weaknesses=[]; if(result.words >= (type==="email"?100:120)) strengths.push("권장 분량을 충족했습니다."); else weaknesses.push("핵심 근거나 상황 설명을 더해 권장 분량을 채우세요."); if(result.paragraphs>=3) strengths.push("문단별 기능이 비교적 분명합니다."); else weaknesses.push("아이디어 경계에 맞춰 문단을 나누세요."); if(result.evidence>=2) strengths.push("이유·예시·결과 연결이 보입니다."); else weaknesses.push("주장 뒤에 구체적인 이유와 예시를 추가하세요."); if(result.transitions>=2) strengths.push("연결어로 흐름을 표시했습니다."); else weaknesses.push("For example, As a result 같은 연결 표현을 활용하세요.");

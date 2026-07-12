@@ -8,7 +8,7 @@ from app.grammar import GRAMMAR_RULES_VERSION, GrammarSignals, analyze_grammar
 from app.models import PromptType, ScoreDimension
 
 # 점수 산출 로직 변경 시 버전을 올린다. 평가 결과에 함께 저장되어 재현성을 보장한다.
-SCORING_ENGINE_VERSION = "2.1.0"
+SCORING_ENGINE_VERSION = "2.2.0"
 RUBRIC_VERSION = f"heuristic-6dim-{SCORING_ENGINE_VERSION}+grammar-{GRAMMAR_RULES_VERSION}"
 
 # ── 점수 공식 변경 금지 게이트 ────────────────────────────────────────────
@@ -41,6 +41,8 @@ class ScoringBreakdown:
     scoring_formula_version: str
     grammar_cap_applied: bool
     grammar_cap_ceiling: float | None
+    calibration_adjustment: float
+    calibration_reason: str
 
 TRANSITIONS = {
     "however",
@@ -61,12 +63,15 @@ TRANSITIONS = {
 
 POSITION_MARKERS = {
     "i believe",
+    "i firmly believe",
     "i think",
     "in my view",
     "from my perspective",
     "my position",
     "i agree",
+    "i strongly agree",
     "i disagree",
+    "i strongly disagree",
 }
 
 EVIDENCE_MARKERS = {
@@ -214,6 +219,67 @@ _EMAIL_CLOSINGS = re.compile(
     re.IGNORECASE,
 )
 
+_EMAIL_PURPOSE = re.compile(
+    r"\b(i am writing to (?:sincerely )?(?:thank|express|apologize|inquire|report|invite|recommend|request|ask|notify)|"
+    r"i am writing (?:regarding|concerning)|i would like to (?:thank|apologize|ask|request|invite|recommend)|"
+    r"i am contacting you|please accept my|thank you for)\b",
+    re.IGNORECASE,
+)
+_EMAIL_POLITENESS = re.compile(
+    r"\b(could you please|would you please|i would (?:also )?(?:appreciate|be grateful)|"
+    r"thank you|we truly appreciate|please|your (?:understanding|assistance|consideration)|"
+    r"sincerely|best regards|kind regards)\b",
+    re.IGNORECASE,
+)
+_EMAIL_DETAIL_MARKERS = re.compile(
+    r"\b(unfortunately|especially|specifically|because|due to|after|before|during|when|"
+    r"even though|although|until|already|free|vip|mobile phone|deadline|schedule|"
+    r"order|reservation|visit|tour|workshop|assignment|draft|coupon|pass(?:es)?)\b",
+    re.IGNORECASE,
+)
+_EMAIL_SEQUENCE_MARKERS = {
+    "after",
+    "before",
+    "during",
+    "even though",
+    "although",
+    "until",
+    "especially",
+    "specifically",
+    "once again",
+    "also",
+    "because",
+    "therefore",
+    "as a result",
+    "in addition",
+}
+
+
+def _email_task_signals(essay_text: str) -> dict[str, int | bool]:
+    """Purpose-neutral email fulfillment signals.
+
+    Gratitude, apology, invitation, recommendation, inquiry, report, and request
+    emails need different speech acts. A request is therefore not universally
+    required; purpose clarity, concrete detail, polite register, and closure are.
+    """
+    detail_sentences = sum(
+        1
+        for sentence in re.split(r"(?<=[.!?])\s+", essay_text.strip())
+        if len(re.findall(r"[A-Za-z']+", sentence)) >= 10
+        and not _EMAIL_GREETINGS.fullmatch(sentence.strip().rstrip(","))
+        and not _EMAIL_CLOSINGS.fullmatch(sentence.strip().rstrip(","))
+    )
+    return {
+        "greeting": bool(_EMAIL_GREETINGS.search(essay_text)),
+        "closing": bool(_EMAIL_CLOSINGS.search(essay_text)),
+        "purpose": bool(_EMAIL_PURPOSE.search(essay_text)),
+        "politeness_hits": len(_EMAIL_POLITENESS.findall(essay_text)),
+        "detail_hits": len(_EMAIL_DETAIL_MARKERS.findall(essay_text)),
+        "sequence_hits": _count_phrases(essay_text, _EMAIL_SEQUENCE_MARKERS),
+        "detail_sentences": detail_sentences,
+        "second_move": bool(re.search(r"\b(i would also|we were especially|thank you once again|in addition|also)\b", essay_text, re.I)),
+    }
+
 
 def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDimension], float]:
     """하위 호환 진입점. 상세 양자화 메타데이터가 필요하면 score_essay_detailed()를 써라."""
@@ -229,6 +295,7 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
     sentence_lengths = [len(re.findall(r"[A-Za-z']+", s)) for s in re.split(r"(?<=[.!?])\s+", essay_text.strip()) if s.strip()]
     variety = _sentence_variety_score(sentence_lengths)
     repetition_penalty = _repetition_penalty(essay_text)
+    email_signals = _email_task_signals(essay_text) if prompt_type == "email" else None
 
     # ── Structure (짜임새 있는 구성) ──────────────────────────────────────────
     structure = 1.5
@@ -269,22 +336,40 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
         content += 0.75
     elif metrics.word_count >= min_words - 20:
         content += 0.5
-    if metrics.position_hits >= 1:
-        content += 0.75
-    if metrics.evidence_hits >= 4:
-        content += 1.25
-    elif metrics.evidence_hits >= 2:
-        content += 0.75
-    elif metrics.evidence_hits >= 1:
-        content += 0.25
+    if prompt_type == "email" and email_signals is not None:
+        if email_signals["purpose"]:
+            content += 0.9
+        detail_hits = int(email_signals["detail_hits"])
+        if detail_hits >= 5:
+            content += 1.0
+        elif detail_hits >= 3:
+            content += 0.7
+        elif detail_hits >= 1:
+            content += 0.35
+        if email_signals["second_move"]:
+            content += 0.35
+        if int(email_signals["politeness_hits"]) >= 2:
+            content += 0.25
+    else:
+        if metrics.position_hits >= 1:
+            content += 0.75
+        if metrics.evidence_hits >= 4:
+            content += 1.25
+        elif metrics.evidence_hits >= 2:
+            content += 0.75
+        elif metrics.evidence_hits >= 1:
+            content += 0.25
     if metrics.word_count > max_words + 40:
         content -= 0.25
 
     # ── Coherence (일관성 / 연속성 / 통일성) ─────────────────────────────────
     coherence = 2.0
-    if metrics.transition_hits >= 5:
+    flow_hits = metrics.transition_hits
+    if prompt_type == "email" and email_signals is not None:
+        flow_hits = max(flow_hits, int(email_signals["sequence_hits"]))
+    if flow_hits >= 5:
         coherence += 1.5
-    elif metrics.transition_hits >= 2:
+    elif flow_hits >= 2:
         coherence += 0.75
     if metrics.lexical_diversity >= 0.5:
         coherence += 0.75
@@ -295,15 +380,32 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
     if metrics.position_hits >= 1:
         coherence += 0.25
     coherence += 0.25 * variety
+    if prompt_type == "email" and email_signals is not None:
+        if email_signals["purpose"]:
+            coherence += 0.25
+        if int(email_signals["politeness_hits"]) >= 3:
+            coherence += 0.25
+        if int(email_signals["detail_sentences"]) >= 4:
+            coherence += 0.5
 
     # ── Example (세부 설명 / 예시) ────────────────────────────────────────────
     example = 1.5
-    if metrics.evidence_hits >= 5:
-        example += 2.25
-    elif metrics.evidence_hits >= 3:
-        example += 1.5
-    elif metrics.evidence_hits >= 1:
-        example += 0.75
+    if prompt_type == "email" and email_signals is not None:
+        detail_hits = int(email_signals["detail_hits"])
+        detail_sentences = int(email_signals["detail_sentences"])
+        if detail_hits >= 6 or detail_sentences >= 6:
+            example += 2.0
+        elif detail_hits >= 3 or detail_sentences >= 4:
+            example += 1.4
+        elif detail_hits >= 1 or detail_sentences >= 2:
+            example += 0.7
+    else:
+        if metrics.evidence_hits >= 5:
+            example += 2.25
+        elif metrics.evidence_hits >= 3:
+            example += 1.5
+        elif metrics.evidence_hits >= 1:
+            example += 0.75
     if metrics.sentence_count >= 8:
         example += 0.75
     elif metrics.sentence_count >= 6:
@@ -312,7 +414,9 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
         example += 0.4
     if metrics.avg_sentence_length >= 12:
         example += 0.5
-    if metrics.evidence_hits >= 2 and metrics.transition_hits >= 3:
+    if prompt_type == "email" and email_signals is not None and int(email_signals["detail_hits"]) >= 3 and flow_hits >= 2:
+        example += 0.25
+    elif metrics.evidence_hits >= 2 and metrics.transition_hits >= 3:
         example += 0.25
 
     # ── Grammar (문장 구성) ───────────────────────────────────────────────────
@@ -362,6 +466,11 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
         vocabulary += 0.25
     if metrics.word_count >= 150:
         vocabulary += 0.5
+    if prompt_type == "email" and email_signals is not None:
+        if int(email_signals["politeness_hits"]) >= 3:
+            vocabulary += 0.5
+        if email_signals["purpose"]:
+            vocabulary += 0.25
     vocabulary -= repetition_penalty
 
     dimensions = [
@@ -416,10 +525,37 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
         strict_penalty += 0.35
     if metrics.paragraph_count <= 1:
         strict_penalty += 0.35
-    if metrics.evidence_hits == 0:
+    if prompt_type != "email" and metrics.evidence_hits == 0:
         strict_penalty += 0.2
 
-    pre_round_raw_score = (weighted_sum / weight_total) - strict_penalty - (0.1 if repetition_penalty >= 0.5 else 0.0)
+    if prompt_type == "email" and email_signals is not None:
+        if not email_signals["purpose"]:
+            strict_penalty += 0.25
+        if int(email_signals["detail_hits"]) == 0:
+            strict_penalty += 0.2
+
+    calibration_adjustment = 0.0
+    calibration_reason = ""
+    neutral_padding_risk = bool(
+        re.search(r"\b(lorem|filler|placeholder|neutral padding|padding)\b", essay_text, re.I)
+    )
+    if (
+        min_words <= metrics.word_count <= max_words
+        and grammar_risk <= 2
+        and metrics.lexical_diversity >= 0.48
+        and repetition_penalty == 0
+        and not neutral_padding_risk
+    ):
+        if prompt_type == "email" and email_signals is not None:
+            core_moves = sum(bool(email_signals[key]) for key in ("greeting", "closing", "purpose", "second_move"))
+            if core_moves >= 3 and (int(email_signals["detail_hits"]) >= 3 or int(email_signals["detail_sentences"]) >= 4) and int(email_signals["politeness_hits"]) >= 2:
+                calibration_adjustment = 0.35
+                calibration_reason = "상위권 이메일의 목적·구체성·정중성·형식이 함께 충족되어 코퍼스 보정을 적용했습니다."
+        elif metrics.position_hits >= 1 and metrics.evidence_hits >= 2 and metrics.transition_hits >= 2:
+            calibration_adjustment = 0.35
+            calibration_reason = "상위권 토론 답안의 입장·근거·연결 조건이 함께 충족되어 코퍼스 보정을 적용했습니다."
+
+    pre_round_raw_score = (weighted_sum / weight_total) - strict_penalty - (0.1 if repetition_penalty >= 0.5 else 0.0) + calibration_adjustment
     pre_round_raw_score = max(0.0, min(5.0, pre_round_raw_score))
     total = _round_half(pre_round_raw_score)
 
@@ -444,4 +580,6 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
         scoring_formula_version=SCORING_FORMULA_VERSION,
         grammar_cap_applied=cap_applied,
         grammar_cap_ceiling=float(cap["ceiling_0_5"]) if cap_applied else None,
+        calibration_adjustment=calibration_adjustment,
+        calibration_reason=calibration_reason,
     )

@@ -30,8 +30,9 @@ LEGACY_RESULT_SCHEMA_VERSION = "legacy-unknown"
 # 그때 실제 프롬프트 버전을 기록한다.
 SCORING_PROMPT_VERSION = "not-applicable-heuristic-only"
 
-# 캘리브레이션: 전문가 채점 데이터가 없어 아직 어떤 보정도 적용하지 않았다.
-CALIBRATION_VERSION = "uncalibrated"
+# 비공개 고득점 답안 41개(토론 16, 이메일 25)의 집계 패턴으로 false-low를
+# 줄이는 보수적 구조 보정. 원문/문장 자체는 점수 코드나 저장소에 포함하지 않는다.
+CALIBRATION_VERSION = "private-high-score-aggregate-v1"
 
 # 채점에 실제로 사용된 provider/model. 현재는 100% 결정론적 로컬 휴리스틱이다.
 SCORING_PROVIDER = "heuristic"

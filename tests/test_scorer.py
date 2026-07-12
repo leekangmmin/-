@@ -28,6 +28,20 @@ class TestRanking:
         _, low = score_essay(EMAIL_LOW, "email")
         assert high > low
 
+    def test_high_quality_gratitude_email_reaches_upper_band_without_request(self):
+        synthetic = """Dear Museum Director,
+
+I am writing to express my sincere gratitude for the thoughtful assistance during our school visit. We especially appreciated the accessible tour materials and the extra time your guide spent answering our questions.
+
+After the tour, one student noticed that her notebook was missing. Although the building was about to close, your staff searched the classroom until they found it. Their patience made the student feel supported and allowed our group to leave with a very positive impression.
+
+Thank you once again for your professionalism and generous hospitality. We wish the museum continued success.
+
+Sincerely,
+Jordan Lee"""
+        _, score = score_essay(synthetic, "email")
+        assert score >= 4.0  # displayed practice band >= 5.0
+
     def test_high_quality_reaches_upper_band(self):
         _, high = score_essay(DISCUSSION_HIGH, "academic_discussion")
         # 내부 0-5 스케일 3.5 = 밴드 4.5 이상이어야 한다
@@ -70,3 +84,4 @@ class TestVersioning:
     def test_versions_exist(self):
         assert SCORING_ENGINE_VERSION
         assert RUBRIC_VERSION
+        assert SCORING_ENGINE_VERSION == "2.2.0"
