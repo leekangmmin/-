@@ -231,7 +231,7 @@ class TestClaudeProviderPipeline:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_claude_message_response({
                 "dimensions": [{
-                    "dimension_id": "reasoning", "score": 4.0, "max_score": 5.0,
+                    "dimension_id": "elaboration_relevance", "score": 4.0, "max_score": 5.0,
                     "explanation": "clear claim",
                     "evidence": [
                         {"start": 0, "end": first_sentence_end, "text": SAMPLE_ESSAY[:first_sentence_end], "explanation": "thesis"},
@@ -260,7 +260,7 @@ class TestClaudeProviderPipeline:
                 "requirements": [], "main_claims": [], "off_topic_risk": False, "template_risk": False,
             },
             "score_dimensions": {
-                "dimensions": [{"dimension_id": "reasoning", "score": 3.5, "max_score": 5.0, "explanation": "ok", "evidence": []}],
+                "dimensions": [{"dimension_id": "elaboration_relevance", "score": 3.5, "max_score": 5.0, "explanation": "ok", "evidence": []}],
                 "overall_draft_score": 3.5,
             },
             "critique_assessment": {"flagged_dimension_ids": [], "issues": [], "severity": "none"},
@@ -320,7 +320,7 @@ class TestScoreDimensionsSchemaValidation:
     def test_score_above_max_raises_score_out_of_range(self, cfg):
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_claude_message_response({
-                "dimensions": [{"dimension_id": "position", "score": 9.9, "max_score": 5.0,
+                "dimensions": [{"dimension_id": "elaboration_relevance", "score": 9.9, "max_score": 5.0,
                                  "explanation": "x", "evidence": []}],
                 "overall_draft_score": 9.9,
             }))
@@ -336,7 +336,7 @@ class TestScoreDimensionsSchemaValidation:
     def test_negative_score_raises_score_out_of_range(self, cfg):
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_claude_message_response({
-                "dimensions": [{"dimension_id": "position", "score": -1.0, "max_score": 5.0,
+                "dimensions": [{"dimension_id": "elaboration_relevance", "score": -1.0, "max_score": 5.0,
                                  "explanation": "x", "evidence": []}],
                 "overall_draft_score": 0.0,
             }))
@@ -352,7 +352,7 @@ class TestScoreDimensionsSchemaValidation:
     def test_malformed_evidence_offsets_raise_schema_validation_failed(self, cfg):
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_claude_message_response({
-                "dimensions": [{"dimension_id": "position", "score": 3.0, "max_score": 5.0,
+                "dimensions": [{"dimension_id": "elaboration_relevance", "score": 3.0, "max_score": 5.0,
                                  "explanation": "x",
                                  "evidence": [{"start": "not-an-int", "end": 5, "text": "x", "explanation": "y"}]}],
                 "overall_draft_score": 3.0,

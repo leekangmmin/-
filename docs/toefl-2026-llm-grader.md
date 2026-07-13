@@ -1,0 +1,51 @@
+# TOEFL 2026 LLM task grader
+
+`app/toefl_2026_grader.py` implements the optional one-task LLM contract for
+Write an Email and Academic Discussion. It returns an integer **0-5 task
+score**. It does not estimate the final 1-6 Writing section band; that band
+depends on all three task results, including Build a Sentence.
+
+The deterministic offline scorer remains the only source of the score shown by
+`POST /api/evaluate`. This LLM contract is available for controlled shadow
+evaluation and explicitly enabled provider integrations.
+
+## Safety and validation
+
+- The system prompt contains only trusted rubric and output instructions.
+- `prompt_bullets` and `essay_text` are sent as untrusted JSON data, so an
+  instruction written inside a student's response cannot replace the rubric.
+- The application computes the word count and verifies the model's value.
+- Pydantic strict mode rejects missing/extra fields and type coercion such as
+  `"4"` in place of integer `4`.
+- Code verifies the exact four dimension keys for the selected task, target
+  range, required-point/tone caps, template evidence, error excerpts, and the
+  meaning-impeding error count.
+- Markdown-wrapped or prose-prefixed JSON is rejected. JSON parsing gets one
+  retry, and a schema failure gets one corrective re-request.
+
+## Claude usage
+
+With shadow Claude configuration loaded, call the dedicated method:
+
+```python
+from app.claude_provider import ClaudeScoringProvider
+from app.shadow_config import load_shadow_config
+
+grader = ClaudeScoringProvider(load_shadow_config())
+result = grader.grade_task(
+    task_type="email",
+    prompt_bullets=[
+        "Explain why you are writing.",
+        "Describe the problem.",
+        "Request a specific solution.",
+    ],
+    essay_text="Dear Professor, ...",
+    feedback_language="ko",
+)
+print(result.model_dump_json())
+```
+
+The normal `ClaudeScoringProvider.run()` method remains the multi-stage shadow
+pipeline with evidence-offset verification and an independent critic. Its task
+dimension names and scoring instructions now use the same 2026 four-axis
+rubric, while `grade_task()` is the exact single-call JSON contract.

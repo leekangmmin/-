@@ -15,19 +15,17 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.toefl_2026_grader import (
+    ACADEMIC_DISCUSSION_DIMENSIONS,
+    EMAIL_DIMENSIONS as TOEFL_2026_EMAIL_DIMENSIONS,
+)
+
 RequirementStatus = Literal["met", "partially_met", "missing"]
 
-EMAIL_DIMENSIONS: list[str] = [
-    "task_fulfillment", "organization", "clarity", "supporting_detail",
-    "tone_and_register", "grammar", "vocabulary", "cohesion",
-]
-
-DISCUSSION_DIMENSIONS: list[str] = [
-    "position", "relevance", "reasoning", "supporting_detail",
-    "new_contribution", "engagement_with_other_views", "distortion_of_other_views",
-    "organization", "grammar", "vocabulary", "academic_register",
-    "template_or_off_topic_risk",
-]
+# These are the four task-specific 2026 rubric axes.  Keep aliases as lists for
+# backward-compatible imports in the shadow-mode reporting/tests.
+EMAIL_DIMENSIONS: list[str] = list(TOEFL_2026_EMAIL_DIMENSIONS)
+DISCUSSION_DIMENSIONS: list[str] = list(ACADEMIC_DISCUSSION_DIMENSIONS)
 
 
 class TaskRequirementAssessment(BaseModel):
@@ -75,7 +73,9 @@ def requirement_extraction_instructions(task_type: str) -> str:
             "required_content_points(반드시 포함해야 하는 내용 목록), "
             "tone_expectation(기대되는 어조), constraints(제약조건). "
             "각 required_content_point마다 답안에서 충족(met)/부분충족(partially_met)/"
-            "누락(missing) 여부와 근거(evidence, 답안 원문 발췌)를 판단하라."
+            "누락(missing) 여부와 근거(evidence, 답안 원문 발췌)를 판단하라. "
+            "필수 항목 누락은 최소 1개 밴드를 낮추고, 수신자/상황과 맞지 않는 "
+            "어조는 일반적으로 전체 점수를 3으로 제한한다."
         )
     if task_type == "academic_discussion":
         return (
@@ -84,14 +84,29 @@ def requirement_extraction_instructions(task_type: str) -> str:
             "새로운 기여 여부(new_contribution, 단순 동의/반복이 아닌지), "
             "다른 참여자 의견과의 연결(engagement_with_other_views), "
             "다른 참여자 의견을 왜곡하지 않았는지(distortion_of_other_views). "
-            "각 요구사항마다 충족 여부와 답안 원문 근거를 판단하라."
+            "최종 담화 규약 평가에서는 최소 한 명의 학생을 이름으로 언급하여 "
+            "실질적으로 연결했는지 확인하라. 각 요구사항마다 충족 여부와 답안 "
+            "원문 근거를 판단하라."
         )
     raise ValueError(f"지원하지 않는 task_type: {task_type}")
 
 
 def dimension_scoring_instructions(task_type: str) -> str:
     dims = dimension_ids_for(task_type)
+    task_rule = (
+        "purposeful_communication을 최우선으로 보고, 필수 항목을 누락하면 "
+        "최소 1개 정수 밴드를 낮추며, 어조 불일치 시 일반적으로 3점 상한을 적용하라."
+        if task_type == "email"
+        else "명확한 입장·구체적 전개·관련성과 함께 다른 학생을 이름으로 언급해 "
+        "의미 있게 연결했는지를 평가하라."
+    )
     return (
         f"다음 {len(dims)}개 차원 각각에 대해 점수와 근거를 산출하라 (dimension_id는 "
-        f"정확히 이 목록의 값을 사용하라): {', '.join(dims)}."
+        f"정확히 이 목록의 값을 사용하라): {', '.join(dims)}. "
+        f"{task_rule} 초안으로서 의미를 방해하지 않는 소수 오류는 과도하게 "
+        "감점하지 말고, 완성도를 문장의 세련됨보다 우선하라. 사실 정확성은 "
+        "검증하지 말며, 지어낸 구체적 세부 내용을 감점하지 말라. 명백한 템플릿 "
+        "필러를 감지하고 관련 언어/담화 차원과 전체 점수에 반영하라. 최종 "
+        "overall_draft_score는 단순 평균이 아닌 0~5 정수 홀리스틱 점수여야 한다. "
+        "한 차원이 2점 이하이면 overall 5를 주지 말라."
     )

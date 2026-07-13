@@ -18,6 +18,7 @@ app/scorer.py    — 6개 평가 차원 결정론적 채점 (SCORING_ENGINE_VERS
 app/grammar.py   — 문법 신호 분석 단일 모듈 (GRAMMAR_RULES_VERSION)
 app/advanced.py  — 첨삭·추천·대시보드 등 파생 분석 (grammar는 app/grammar.py에 위임)
 app/ai_mode.py   — 선택적 LLM 보강 (패러프레이즈/드릴/샘플 문단만, 점수 미개입)
+app/toefl_2026_grader.py — 선택적 LLM 단일 과제 0–5 strict-JSON 계약·스키마 검증
 app/db.py        — SQLite 로컬 저장 (data/submissions.db)
 ```
 

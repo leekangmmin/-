@@ -96,7 +96,11 @@ class AssessmentCritique:
 @dataclass
 class FeedbackResult:
     summary: str = ""
+    strengths: list[str] = field(default_factory=list)
     priority_issues: list[str] = field(default_factory=list)
+    one_line_verdict: str = ""
+    error_patterns: list[dict[str, str]] = field(default_factory=list)
+    meaning_impeding_error_count: int = 0
 
 
 @dataclass
@@ -150,6 +154,16 @@ class ScoringInput:
     essay_text: str
     prompt_text: str
     task_type: str
+    feedback_language: Literal["ko", "en"] = "ko"
+
+    def effective_prompt_bullets(self) -> list[str]:
+        """Preserve prompt sections as structured data when possible.
+
+        UI input is currently a single text field. Non-empty lines are the most
+        conservative available representation: Email bullets stay separate and
+        professor/student Discussion posts can be pasted as separate blocks.
+        """
+        return [line.strip() for line in self.prompt_text.splitlines() if line.strip()]
 
 
 class ScoringProvider(ABC):

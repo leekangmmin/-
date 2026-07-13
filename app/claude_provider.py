@@ -44,10 +44,19 @@ from app.task_schemas import (
     dimension_scoring_instructions,
     requirement_extraction_instructions,
 )
+from app.toefl_2026_grader import (
+    FeedbackLanguage,
+    TaskGradeResult,
+    TaskType,
+    TOEFL_2026_GRADER_PROMPT_VERSION,
+    build_grader_request,
+    parse_task_grade,
+    schema_error_message,
+)
 
 logger = logging.getLogger("toefl.shadow.claude")
 
-CLAUDE_PROMPT_VERSION = "claude-shadow-v1"
+CLAUDE_PROMPT_VERSION = f"claude-shadow-v2+{TOEFL_2026_GRADER_PROMPT_VERSION}"
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_API_VERSION = "2023-06-01"
 
@@ -139,7 +148,7 @@ def _content_fingerprint(text: str) -> str:
     return f"len={len(text)} sha256={hashlib.sha256(text.encode('utf-8')).hexdigest()[:12]}"
 
 
-def _extract_json_object(text: str) -> dict[str, Any]:
+def _extract_json_object(text: str, *, strict: bool = False) -> dict[str, Any]:
     stripped = text.strip()
     try:
         parsed = json.loads(stripped)
@@ -147,6 +156,8 @@ def _extract_json_object(text: str) -> dict[str, Any]:
             return parsed
     except json.JSONDecodeError:
         pass
+    if strict:
+        raise ValueError("응답이 엄격한 단일 JSON 객체가 아님")
     match = re.search(r"\{.*\}", stripped, re.DOTALL)
     if match:
         try:
@@ -168,6 +179,8 @@ def call_claude(
     sleep_fn: Callable[[float], None] = time.sleep,
     max_tokens: int = 1500,
     usage_sink: dict[str, int] | None = None,
+    strict_json: bool = False,
+    max_retries_override: int | None = None,
 ) -> dict[str, Any]:
     """Claude Messages API를 호출하고 JSON 객체를 반환한다.
 
@@ -185,8 +198,9 @@ def call_claude(
     http_client = client or httpx.Client(timeout=cfg.timeout_seconds)
 
     last_error: Exception | None = None
+    max_retries = cfg.max_retries if max_retries_override is None else max(0, max_retries_override)
     try:
-        for attempt in range(cfg.max_retries + 1):
+        for attempt in range(max_retries + 1):
             try:
                 logger.info(
                     "claude shadow call stage=%s request_id=%s attempt=%d model=%s",
@@ -216,7 +230,7 @@ def call_claude(
                     for p in payload.get("content", [])
                     if isinstance(p, dict) and p.get("type") == "text"
                 )
-                result = _extract_json_object(text)
+                result = _extract_json_object(text, strict=strict_json)
                 if usage_sink is not None:
                     usage = payload.get("usage", {}) if isinstance(payload.get("usage"), dict) else {}
                     usage_sink["input_tokens"] = usage_sink.get("input_tokens", 0) + int(usage.get("input_tokens", 0))
@@ -238,7 +252,7 @@ def call_claude(
                     raise ProviderCallError("auth_failed", request_id, str(status)) from exc
                 if status == 429:
                     # rate limit — 다음 재시도까지 조금 더 대기
-                    if attempt < cfg.max_retries:
+                    if attempt < max_retries:
                         sleep_fn(min(2.0 * (attempt + 1), 8.0))
                     continue
             except (json.JSONDecodeError, ValueError) as exc:
@@ -250,7 +264,7 @@ def call_claude(
                 logger.warning("claude shadow call stage=%s request_id=%s status=network_error attempt=%d",
                                 stage, request_id, attempt)
 
-            if attempt < cfg.max_retries:
+            if attempt < max_retries:
                 sleep_fn(min(1.0 * (attempt + 1), 5.0))
 
         reason = "timeout" if isinstance(last_error, httpx.TimeoutException) else "call_failed_after_retries"
@@ -277,6 +291,68 @@ class ClaudeScoringProvider(ScoringProvider):
         self.cfg = cfg
         self._client = client
 
+    def grade_task(
+        self,
+        *,
+        task_type: TaskType,
+        essay_text: str,
+        prompt_bullets: list[str],
+        feedback_language: FeedbackLanguage = "ko",
+    ) -> TaskGradeResult:
+        """Run the complete 2026 one-task JSON grading contract.
+
+        This is intentionally separate from ``run()``, whose multi-stage shadow
+        protocol retains evidence offsets and an independent critic.  The method
+        is the executable form of the supplied single-call prompt and performs
+        code-level schema/semantic validation.  A schema failure gets exactly
+        one corrective re-request.
+        """
+        self.last_usage = {"input_tokens": 0, "output_tokens": 0, "calls": 0}
+        system, payload = build_grader_request(
+            task_type=task_type,
+            essay_text=essay_text,
+            prompt_bullets=prompt_bullets,
+            feedback_language=feedback_language,
+        )
+        last_error: Exception | None = None
+        for schema_attempt in range(2):
+            request_payload = dict(payload)
+            if schema_attempt:
+                request_payload["retry_instruction"] = schema_error_message(
+                    last_error or ValueError("invalid response")
+                )
+            data = call_claude(
+                self.cfg,
+                system,
+                request_payload,
+                stage="grade_task_2026",
+                client=self._client,
+                max_tokens=2400,
+                usage_sink=self.last_usage,
+                strict_json=True,
+                # The integration note calls for one retry on JSON parsing.
+                max_retries_override=1,
+            )
+            try:
+                return parse_task_grade(
+                    data,
+                    expected_task_type=task_type,
+                    essay_text=essay_text,
+                )
+            except (ValueError, TypeError) as exc:
+                last_error = exc
+                logger.warning(
+                    "claude 2026 grader schema invalid attempt=%d essay=%s",
+                    schema_attempt,
+                    _content_fingerprint(essay_text),
+                )
+
+        raise ProviderCallError(
+            "schema_validation_failed",
+            request_id=str(uuid.uuid4()),
+            detail=schema_error_message(last_error or ValueError("invalid response")),
+        )
+
     def analyze_input(self, scoring_input: ScoringInput) -> tuple[InputValidation, InputAnalysis]:
         logger.info("claude analyze_input stage start essay=%s", _content_fingerprint(scoring_input.essay_text))
         try:
@@ -285,8 +361,11 @@ class ClaudeScoringProvider(ScoringProvider):
             # build_a_sentence 등 아직 유형별 요구사항 스키마가 없는 task_type — 일반 지시로 대체
             task_instructions = "답안이 문제의 요구사항을 충족하는지 일반적인 기준으로 분석하라."
         system = (
-            f"당신은 TOEFL Writing 답안의 요구사항 충족 여부를 분석하는 보조 채점 도구다. "
+            f"당신은 2026 TOEFL Writing 답안의 요구사항 충족 여부를 분석하는 보조 채점 도구다. "
             f"{_UNTRUSTED_DATA_NOTICE} {task_instructions} "
+            "초안 기준을 적용하고, 의미를 방해하지 않는 소수 오류는 과도하게 감점하지 "
+            "말라. 필수 항목의 완성도를 문장의 세련됨보다 우선하고, 사실 정확성은 "
+            "검증하지 말라. 명백한 템플릿 필러와 Email 어조 불일치를 탐지하라. "
             "다음 JSON 스키마로만 응답하라: "
             '{"is_scorable": bool, "reason_codes": [string], "warnings": [string], '
             '"requirements": [{"requirement": string, "status": "met|partially_met|missing", '
@@ -296,6 +375,8 @@ class ClaudeScoringProvider(ScoringProvider):
         payload = {
             "task_type": scoring_input.task_type,
             "prompt_text": scoring_input.prompt_text,
+            "prompt_bullets": scoring_input.effective_prompt_bullets(),
+            "feedback_language": scoring_input.feedback_language,
             "student_response": scoring_input.essay_text,
         }
         data = call_claude(self.cfg, system, payload, stage="analyze_input", client=self._client, usage_sink=self.last_usage)
@@ -337,8 +418,18 @@ class ClaudeScoringProvider(ScoringProvider):
         )
         payload = {
             "task_type": scoring_input.task_type,
+            "prompt_bullets": scoring_input.effective_prompt_bullets(),
+            "feedback_language": scoring_input.feedback_language,
             "student_response": scoring_input.essay_text,
-            "requirement_analysis": [r.requirement for r in analysis.requirements],
+            "requirement_analysis": [
+                {
+                    "requirement": r.requirement,
+                    "status": r.status,
+                    "evidence_text": r.evidence_text,
+                }
+                for r in analysis.requirements
+            ],
+            "template_risk": analysis.template_risk,
         }
         data = call_claude(self.cfg, system, payload, stage="score_dimensions", client=self._client, usage_sink=self.last_usage)
         _validate_dimension_schema(data, scoring_input.task_type, request_id=str(uuid.uuid4()))
@@ -393,14 +484,36 @@ class ClaudeScoringProvider(ScoringProvider):
 
     def generate_feedback(self, scoring_input: ScoringInput, final_score: float) -> FeedbackResult:
         system = (
-            f"당신은 학생에게 실행 가능한 피드백을 작성하는 보조 도구다. "
+            f"당신은 2026 TOEFL Writing 학생에게 실행 가능한 피드백을 작성하는 보조 도구다. "
             f"{_UNTRUSTED_DATA_NOTICE} "
+            "feedback_language로만 피드백을 쓰라. 한국인 학습자에게 자주 보이는 "
+            "verb_as_subject, missing_article, prep_wrong_pos를 실제로 있을 때만 지적하고, "
+            "각 오류를 meaning_impeding 또는 minor로 분류하라. "
             "다음 JSON 스키마로만 응답하라: "
-            '{"summary": string, "priority_issues": [string]}'
+            '{"summary": string, "strengths": [string], "priority_issues": [string], '
+            '"one_line_verdict": string, "error_patterns": [{"type": '
+            '"verb_as_subject|missing_article|prep_wrong_pos|other", "excerpt": string, '
+            '"correction": string, "severity": "meaning_impeding|minor"}], '
+            '"meaning_impeding_error_count": int}'
         )
-        payload = {"student_response": scoring_input.essay_text, "final_score": final_score}
+        payload = {
+            "task_type": scoring_input.task_type,
+            "feedback_language": scoring_input.feedback_language,
+            "student_response": scoring_input.essay_text,
+            "final_score": final_score,
+        }
         data = call_claude(self.cfg, system, payload, stage="generate_feedback", client=self._client, usage_sink=self.last_usage)
         return FeedbackResult(
             summary=str(data.get("summary", "")),
+            strengths=[str(x) for x in data.get("strengths", [])],
             priority_issues=[str(x) for x in data.get("priority_issues", [])],
+            one_line_verdict=str(data.get("one_line_verdict", "")),
+            error_patterns=[
+                {str(k): str(v) for k, v in item.items()}
+                for item in data.get("error_patterns", [])
+                if isinstance(item, dict)
+            ],
+            meaning_impeding_error_count=max(
+                0, int(data.get("meaning_impeding_error_count", 0) or 0)
+            ),
         )

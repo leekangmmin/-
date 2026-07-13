@@ -36,12 +36,13 @@ class ScoringProvider(ABC):
 - **MockScoringProvider**: 네트워크 호출 없이 텍스트 통계로 그럴듯한 구조를
   생성. 파이프라인 배관(스키마, evidence 검증, reconciliation, confidence)을
   검증하는 용도. **채점 품질의 증거가 아니다.**
-- **실제 LLM provider(OpenAI/Claude/Gemini)**: `get_provider()`에서
-  `NotImplementedError`를 명시적으로 던진다. `app/ai_mode.py`에 이미 존재하는
-  httpx 기반 호출 패턴(`_openai_enhance`, `_anthropic_enhance`, `_gemini_enhance`)을
-  재사용해 4단계 호출로 구현할 수 있는 구조는 마련했지만, **이 세션에는 API
-  키가 없어 실제 구현·검증을 하지 않았다.** 구현하지 않은 것을 구현했다고
-  주장하지 않기 위해 의도적으로 미룬 것이다.
+- **Claude provider**: `app/claude_provider.py`에 4단계 shadow 호출·스키마
+  검증·재시도·비용 추정 경로가 구현되어 있다. 2026 과제별 4개 평가
+  축을 사용하며, `grade_task()`는 첨부된 단일 과제 strict-JSON 계약을
+  실행한다. 다만 실제 모델 채점 정확도는 전문가 골드 데이터 없이
+  검증되었다고 보지 않는다.
+- **OpenAI/Gemini shadow provider**: 아직 4단계 `ScoringProvider`로는 구현되지
+  않았다. 선택형 피드백 보강 경로와 shadow 채점 provider는 구분한다.
 
 ## 실행 결과 (MockProvider, 실제 저장된 답안 10건)
 ```
@@ -74,5 +75,7 @@ delta가 큰 경우(#67, #62)가 보이는데, 이는 **MockProvider가 실제 �
 | Critic → 점수 조정 규칙 | 구현 완료, 테스트 통과 |
 | MockProvider 파이프라인 | 구현 완료, 실제 DB 10건 실행 확인 |
 | production 경로 미개입 | **실측 확인** (동일 입력 shadow 실행 전/후 점수 동일) |
-| 실제 OpenAI/Claude/Gemini shadow 채점 | **미검증** — API 키 없음 |
+| Claude shadow 호출/스키마 처리 | MockTransport로 통합 테스트 완료 |
+| Claude 실제 모델 채점 품질 | **미검증** — 전문가 골드 데이터 없음 |
+| OpenAI/Gemini shadow 채점 | **미구현** |
 | shadow 점수의 정확도(전문가 대비) | **측정 불가** — 전문가 데이터 없음 |

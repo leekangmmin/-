@@ -21,12 +21,21 @@ class TestDimensionSchemas:
     def test_email_dimensions_are_distinct_from_discussion(self):
         assert set(EMAIL_DIMENSIONS) != set(DISCUSSION_DIMENSIONS)
 
-    def test_email_has_tone_and_register(self):
-        assert "tone_and_register" in EMAIL_DIMENSIONS
+    def test_email_has_official_four_axes(self):
+        assert EMAIL_DIMENSIONS == [
+            "purposeful_communication",
+            "social_conventions_tone",
+            "language_use",
+            "organization",
+        ]
 
-    def test_discussion_has_engagement_and_distortion_checks(self):
-        assert "engagement_with_other_views" in DISCUSSION_DIMENSIONS
-        assert "distortion_of_other_views" in DISCUSSION_DIMENSIONS
+    def test_discussion_has_official_four_axes(self):
+        assert DISCUSSION_DIMENSIONS == [
+            "elaboration_relevance",
+            "syntax_vocabulary",
+            "discourse_conventions",
+            "language_accuracy",
+        ]
 
     def test_dimension_ids_for_unsupported_type_raises(self):
         with pytest.raises(ValueError):
@@ -69,7 +78,7 @@ class TestProviderUsesTaskSpecificPrompts:
             body = json.loads(request.content)
             captured["system"] = body["system"]
             body_out = {
-                "dimensions": [{"dimension_id": "position", "score": 3.0, "max_score": 5.0, "explanation": "ok", "evidence": []}],
+                "dimensions": [{"dimension_id": "elaboration_relevance", "score": 3.0, "max_score": 5.0, "explanation": "ok", "evidence": []}],
                 "overall_draft_score": 3.0,
             }
             return httpx.Response(200, json={"content": [{"type": "text", "text": json.dumps(body_out)}]})
@@ -82,5 +91,5 @@ class TestProviderUsesTaskSpecificPrompts:
             ScoringInput("I agree with this position because...", "", "academic_discussion"),
             InputAnalysis(),
         )
-        assert "position" in captured["system"]
-        assert "new_contribution" in captured["system"]
+        assert "elaboration_relevance" in captured["system"]
+        assert "discourse_conventions" in captured["system"]
