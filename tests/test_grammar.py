@@ -1,6 +1,6 @@
 """문법 신호 모듈 회귀 테스트 — 오탐 방지가 핵심이다."""
 
-from app.grammar import analyze_grammar, count_article_mismatch, find_comma_splices
+from app.grammar import analyze_grammar, count_article_mismatch, find_comma_splices, grammar_analysis_text
 
 
 class TestNoFalsePositives:
@@ -37,6 +37,23 @@ class TestNoFalsePositives:
 
     def test_coordinated_clause_is_not_splice(self):
         assert find_comma_splices(["I studied hard, and I passed the exam."]) == 0
+
+    def test_semicolon_transition_is_not_comma_splice(self):
+        assert find_comma_splices([
+            "I booked a ticket; however, I could not find the schedule."
+        ]) == 0
+
+    def test_email_salutation_and_signature_are_not_fragments(self):
+        email = """To whom it may concern,
+
+I am writing to request the event schedule. Thank you very much for your assistance. I look forward to your reply.
+
+Kind regards,
+Taylor"""
+        body = grammar_analysis_text(email, "email")
+        assert "To whom it may concern" not in body
+        assert "Kind regards" not in body
+        assert analyze_grammar(body).total == 0
 
     def test_abbreviations_not_punctuation_error(self):
         sig = analyze_grammar("The U.S. economy grew, e.g. in the tech sector.")

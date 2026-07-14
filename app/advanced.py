@@ -5,7 +5,7 @@ import re
 from collections import Counter
 from typing import Any, Literal
 
-from app.grammar import analyze_grammar, find_comma_splices, split_sentences, starts_with_vowel_sound
+from app.grammar import analyze_grammar, find_comma_splices, grammar_analysis_text, split_sentences, starts_with_vowel_sound
 from app.scorer import analyze_essay
 
 STOPWORDS = {
@@ -316,9 +316,9 @@ def map_claim_evidence(essay_text: str) -> list[dict]:
     return tagged
 
 
-def grammar_error_stats(essay_text: str) -> dict:
+def grammar_error_stats(essay_text: str, prompt_type: str | None = None) -> dict:
     """공유 문법 모듈(app.grammar)에 위임한다. 규칙 중복/불일치 제거."""
-    return analyze_grammar(essay_text).as_stats_dict()
+    return analyze_grammar(grammar_analysis_text(essay_text, prompt_type)).as_stats_dict()
 
 
 def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[str, Any]]:
@@ -1017,7 +1017,7 @@ def confidence_reason(
     metrics = analyze_essay(essay_text)
     reasons = []
 
-    if metrics.word_count < 120:
+    if metrics.word_count < 80:
         reasons.append("분량이 짧아 추정 안정성이 낮습니다")
     if prompt_fit_score < 3.0:
         reasons.append("프롬프트 키워드 반영률이 낮습니다")
@@ -1030,14 +1030,10 @@ def confidence_reason(
     return f"{level.upper()} 신뢰도 판단 근거: " + "; ".join(reasons[:3])
 
 
-def _to_band_1_6(score_0_5: float) -> float:
-    return round(max(1.0, min(6.0, score_0_5 + 1.0)) * 2) / 2
-
-
 def _rewrite_priority_action(weakness: str) -> str:
     lowered = weakness.lower()
     if "분량" in weakness:
-        return "최소 120단어 이상으로 늘리고, 주장-근거-결론 순서로 논리를 완성하세요."
+        return "과제별 권장 최소 분량을 채우고, 주장-근거-결론 순서로 논리를 완성하세요."
     if "문단" in weakness:
         return "문단을 3개 이상으로 나누고, 각 문단 첫 문장에 핵심 주장 하나만 두세요."
     if "근거" in weakness or "예시" in weakness:
@@ -1053,22 +1049,32 @@ def _rewrite_priority_action(weakness: str) -> str:
     return weakness + "을 먼저 고치세요."
 
 
-def bilingual_summary(total_score: float, prompt_fit_score: float, weaknesses: list[str]) -> dict:
-    score_band = _to_band_1_6(total_score)
-    prompt_fit_band = _to_band_1_6(prompt_fit_score)
-    priority = _rewrite_priority_action(weaknesses[0] if weaknesses else "근거를 더 구조적으로 쓰세요")
-    warn = " (경고: 5.5 미만, 추가 학습 필요)" if score_band < 5.5 else ""
-    summary_ko = (
-        f"현재 예상 밴드는 {score_band:.1f}/6.0{warn}입니다. "
-        f"주제 반영도는 {prompt_fit_band:.1f}/6.0입니다. "
-        f"가장 먼저 할 일은 {priority}"
+def bilingual_summary(
+    total_score: float,
+    prompt_fit_score: float,
+    weaknesses: list[str],
+    prompt_fit_evaluated: bool = True,
+) -> dict:
+    if weaknesses:
+        priority = _rewrite_priority_action(weaknesses[0])
+    elif total_score >= 4.5:
+        priority = "현재의 과제 충족도와 언어 정확성을 일관되게 유지하세요."
+    else:
+        priority = "근거를 더 구조적으로 쓰세요."
+    warn = " (추가 개선 필요)" if total_score < 4.0 else ""
+    fit_ko = (
+        f"주제 반영도는 {prompt_fit_score:.1f}/5.0입니다."
+        if prompt_fit_evaluated
+        else "문제 지문이 없어 주제 반영도는 측정하지 않았습니다."
     )
-    summary_en = (
-        f"Your current estimated band is {score_band:.1f}/6.0{warn}. "
-        f"Your task-response fit is {prompt_fit_band:.1f}/6.0. "
-        f"Top priority: {priority}"
+    fit_en = (
+        f"Your task-response fit is {prompt_fit_score:.1f}/5.0."
+        if prompt_fit_evaluated
+        else "Task-response fit was not measured because the prompt was not supplied."
     )
-    return {"summary_ko": summary_ko, "summary_en": summary_en, "max_score": 6.0}
+    summary_ko = f"현재 예상 과제 점수는 {total_score:.1f}/5.0{warn}입니다. {fit_ko} 가장 먼저 할 일은 {priority}"
+    summary_en = f"Your current estimated task score is {total_score:.1f}/5.0{warn}. {fit_en} Top priority: {priority}"
+    return {"summary_ko": summary_ko, "summary_en": summary_en, "max_score": 5.0}
 
 
 def build_dashboard(rows: list[dict]) -> dict:
@@ -1089,8 +1095,15 @@ def build_dashboard(rows: list[dict]) -> dict:
     avg_score = round(
         sum(float(row.get("estimated_score_0_5", 0)) for row in rows) / len(rows), 2
     )
-    avg_prompt_fit = round(
-        sum(float(row.get("prompt_fit_score", 0)) for row in rows) / len(rows), 2
+    evaluated_fit_rows = [row for row in rows if row.get("prompt_fit_evaluated") is not False]
+    avg_prompt_fit = (
+        round(
+            sum(float(row.get("prompt_fit_score", 0)) for row in evaluated_fit_rows)
+            / len(evaluated_fit_rows),
+            2,
+        )
+        if evaluated_fit_rows
+        else 0.0
     )
 
     trend = [
@@ -1149,7 +1162,7 @@ def build_pre_submit_checklist(prompt_type: str, prompt_text: str, essay_text: s
     metrics = analyze_essay(essay_text)
     grammar = grammar_error_stats(essay_text)
     prompt_fit = evaluate_prompt_fit(prompt_text, essay_text)
-    min_words = 100 if prompt_type == "email" else 120
+    min_words = 80 if prompt_type == "email" else 100
 
     items = [
         {
@@ -1245,22 +1258,24 @@ def build_score_simulator(current_score_0_5: float, grammar_stats: dict[str, int
         delta = 0.25
     else:
         delta = 0.1
-    projected = min(6.0, round((current_score_0_5 + delta + 1.0) * 2) / 2)
+    projected_score = min(5.0, round((current_score_0_5 + delta) * 2) / 2)
     items.append(
         {
             "action": "문법 오류 3개 줄이기",
             "expected_delta_0_5": round(delta, 2),
-            "projected_band_1_6": projected,
+            "projected_score_0_5": projected_score,
+            "projected_band_1_6": None,
         }
     )
 
     ex_delta = 0.35 if evidence_hits < 2 else 0.2
-    projected2 = min(6.0, round((current_score_0_5 + ex_delta + 1.0) * 2) / 2)
+    projected_score2 = min(5.0, round((current_score_0_5 + ex_delta) * 2) / 2)
     items.append(
         {
             "action": "각 본론에 구체 예시 1개 추가",
             "expected_delta_0_5": round(ex_delta, 2),
-            "projected_band_1_6": projected2,
+            "projected_score_0_5": projected_score2,
+            "projected_band_1_6": None,
         }
     )
     return items
@@ -1291,7 +1306,7 @@ def build_grammar_impact(grammar_stats: dict[str, int]) -> list[dict[str, Any]]:
     return items[:6]
 
 
-def build_before_after_projection(current_score_0_5: float, grammar_stats: dict[str, int]) -> dict[str, float]:
+def build_before_after_projection(current_score_0_5: float, grammar_stats: dict[str, int]) -> dict[str, float | None]:
     total = int(grammar_stats.get("total", 0))
     gain = 0.1
     if total >= 8:
@@ -1301,23 +1316,19 @@ def build_before_after_projection(current_score_0_5: float, grammar_stats: dict[
     elif total >= 3:
         gain = 0.35
     projected = min(5.0, round((current_score_0_5 + gain) * 2) / 2)
-    current_band = round((current_score_0_5 + 1.0) * 2) / 2
-    projected_band = round((projected + 1.0) * 2) / 2
     return {
         "current_score_0_5": current_score_0_5,
         "projected_score_0_5": projected,
-        "current_band_1_6": current_band,
-        "projected_band_1_6": projected_band,
+        "current_band_1_6": None,
+        "projected_band_1_6": None,
         "expected_gain_0_5": round(projected - current_score_0_5, 2),
     }
 
 
 def build_target_band_strategy(target_score_0_5: float, current_score_0_5: float) -> list[dict[str, str]]:
-    target_band = round((target_score_0_5 + 1.0) * 2) / 2
-    current_band = round((current_score_0_5 + 1.0) * 2) / 2
-    gap = max(0.0, target_band - current_band)
+    gap = max(0.0, target_score_0_5 - current_score_0_5)
 
-    if target_band <= 4.5:
+    if target_score_0_5 <= 3.5:
         return [
             {"title": "문법 안정화 우선", "detail": "수일치/시제/문장부호 오류를 먼저 제거해 기본 점수를 확보하세요."},
             {"title": "템플릿 고정", "detail": "서론-본론-결론 틀을 고정해 구조 점수 변동을 줄이세요."},
@@ -1364,7 +1375,7 @@ def build_examiner_feedback(total_score_0_5: float, grammar_stats: dict[str, int
         }
 
     comments = []
-    comments.append(f"Estimated band: {_to_band_1_6(total_score_0_5):.1f}/6.0")
+    comments.append(f"Estimated task score: {total_score_0_5:.1f}/5.0")
     if grammar_stats.get("total", 0) >= 4:
         comments.append("Grammar control is unstable. Repeated errors limit higher bands.")
     else:
@@ -1608,7 +1619,13 @@ def personalization_advice(rows: list[dict[str, Any]]) -> dict:
         }
 
     avg_score = sum(float(r.get("estimated_score_0_5", 0)) for r in recent) / len(recent)
-    avg_fit = sum(float(r.get("prompt_fit_score", 0)) for r in recent) / len(recent)
+    evaluated_fit_rows = [r for r in recent if r.get("prompt_fit_evaluated") is not False]
+    avg_fit = (
+        sum(float(r.get("prompt_fit_score", 0)) for r in evaluated_fit_rows)
+        / len(evaluated_fit_rows)
+        if evaluated_fit_rows
+        else 5.0
+    )
 
     issue_counter = Counter()
     for row in recent:
@@ -1640,7 +1657,7 @@ def pre_submit_risk(prompt_type: str, prompt_text: str, essay_text: str) -> dict
     grammar = grammar_error_stats(essay_text)
 
     warnings: list[str] = []
-    min_words = 100 if prompt_type == "email" else 120
+    min_words = 80 if prompt_type == "email" else 100
     if metrics.word_count < min_words:
         warnings.append("분량이 권장 범위보다 부족합니다.")
     if prompt_type == "email":

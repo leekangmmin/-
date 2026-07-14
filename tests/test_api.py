@@ -35,7 +35,7 @@ def test_capabilities_default_to_offline_core_without_required_keys(client):
     assert body["api_key_required"] is False
     assert body["cloud_ai"] is False
     assert body["pwa"] is False
-    assert body["score_policy"] == "heuristic_score_only"
+    assert body["score_policy"] == "llm_when_enabled_with_heuristic_fallback"
 
 
 def test_evaluate_full_flow(client):
@@ -50,13 +50,64 @@ def test_evaluate_full_flow(client):
     assert res.status_code == 200
     body = res.json()
     result = body["result"]
-    assert 1.0 <= result["score_band_1_6"] <= 6.0
+    assert 0.0 <= result["estimated_score_0_5"] <= 5.0
+    assert result["score_band_1_6"] is None
+    assert result["estimated_score_30"] is None
+    assert result["score_source"] == "heuristic"
     assert result["engine"]["scoring_engine_version"]
     assert result["engine"]["rubric_version"]
     assert len(result["dimensions"]) == 6
     # 저장 후 이력 조회 가능
     history = client.get("/api/history").json()
     assert any(item["id"] == body["submission_id"] for item in history["items"])
+
+
+def test_validated_llm_grade_drives_displayed_task_score(client, monkeypatch):
+    import app.main as main_module
+    from app.operational_grader import OperationalGradeOutcome
+    from app.toefl_2026_grader import ACADEMIC_DISCUSSION_DIMENSIONS, TaskGradeResult, count_words, is_in_target_range
+
+    word_count = count_words(DISCUSSION_HIGH)
+    grade = TaskGradeResult.model_validate({
+        "task_type": "academic_discussion",
+        "word_count": word_count,
+        "in_target_range": is_in_target_range("academic_discussion", word_count),
+        "overall_score": 5,
+        "band_label": "Fully accomplished",
+        "required_points": {"covered": ["position", "support"], "missed": []},
+        "dimensions": {
+            key: {"score": 5, "comment": "Expert-level task performance."}
+            for key in ACADEMIC_DISCUSSION_DIMENSIONS
+        },
+        "caps_triggered": [],
+        "template_flag": {"detected": False, "evidence": []},
+        "error_patterns": [],
+        "meaning_impeding_error_count": 0,
+        "strengths": ["AI-confirmed strength"],
+        "priority_fixes": ["Maintain this level of precision"],
+        "one_line_verdict": "A complete response.",
+    })
+
+    monkeypatch.setattr(
+        main_module,
+        "grade_operational_task",
+        lambda **_: OperationalGradeOutcome(
+            grade=grade,
+            source="llm",
+            provider="openai",
+            model="gpt-test",
+            detail="2026 과제 루브릭 AI 채점값입니다.",
+        ),
+    )
+    res = client.post("/api/evaluate", json={"essay_text": DISCUSSION_HIGH})
+    assert res.status_code == 200
+    result = res.json()["result"]
+    assert result["estimated_score_0_5"] == 5.0
+    assert result["score_source"] == "llm"
+    assert result["engine"]["provider"] == "openai"
+    assert result["engine"]["prompt_version"].endswith("v2")
+    assert len(result["dimensions"]) == 4
+    assert result["strengths"] == ["AI-confirmed strength"]
 
 
 def test_engine_metadata_is_complete(client):
@@ -75,8 +126,16 @@ def test_engine_metadata_is_complete(client):
 
     # 현재는 순수 휴리스틱 채점이므로 명시적으로 표시돼야 한다
     assert engine["provider"] == "heuristic"
-    assert engine["calibration_version"] == "private-high-score-aggregate-v1"
+    assert engine["calibration_version"] == "expert-perfect-structure-v2"
     assert "not-applicable" in engine["model"]
+
+
+def test_missing_prompt_is_reported_as_not_evaluated(client):
+    res = client.post("/api/evaluate", json={"essay_text": DISCUSSION_HIGH})
+    result = res.json()["result"]
+    assert result["prompt_fit"]["evaluated"] is False
+    assert result["prompt_fit"]["missing_keywords"] == []
+    assert "측정하지 않았습니다" in result["bilingual_feedback"]["summary_ko"]
 
 
 def test_history_marks_current_records_as_non_legacy(client):
@@ -105,19 +164,19 @@ def test_prompt_injection_does_not_boost_score(client):
     """인젝션 문구가 점수를 끌어올리면 안 된다."""
     res = client.post("/api/evaluate", json={"essay_text": DISCUSSION_INJECTION})
     assert res.status_code == 200
-    injected = res.json()["result"]["score_band_1_6"]
+    injected = res.json()["result"]["estimated_score_0_5"]
 
     res2 = client.post("/api/evaluate", json={"essay_text": DISCUSSION_HIGH})
-    clean_high = res2.json()["result"]["score_band_1_6"]
+    clean_high = res2.json()["result"]["estimated_score_0_5"]
 
     assert injected < clean_high
-    assert injected <= 3.0  # 저품질 본문 + 인젝션 → 상위 밴드 불가
+    assert injected <= 2.0  # 저품질 본문 + 인젝션 → 상위 과제 점수 불가
 
 
 def test_low_quality_scores_below_high_quality(client):
     low = client.post("/api/evaluate", json={"essay_text": DISCUSSION_LOW}).json()
     high = client.post("/api/evaluate", json={"essay_text": DISCUSSION_HIGH}).json()
-    assert low["result"]["score_band_1_6"] < high["result"]["score_band_1_6"]
+    assert low["result"]["estimated_score_0_5"] < high["result"]["estimated_score_0_5"]
 
 
 def test_history_and_submission_persistence(client):

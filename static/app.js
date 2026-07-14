@@ -36,6 +36,7 @@ const grammarCapBadgeEl   = document.getElementById("grammarCapBadge");
 const grammarCapReasonEl  = document.getElementById("grammarCapReason");
 const confidenceEl        = document.getElementById("confidence");
 const confidenceReasonEl  = document.getElementById("confidenceReason");
+const scoreSourceDetailEl = document.getElementById("scoreSourceDetail");
 const dimensionBarsEl     = document.getElementById("dimensionBars");
 const taskTagEl           = document.getElementById("taskTag");
 const grammarStatsEl      = document.getElementById("grammarStats");
@@ -129,10 +130,10 @@ function updateLiveStats() {
   const words = essay ? essay.split(/\s+/).filter(Boolean).length : 0;
   const sentences = essay ? sentenceCount(essay) : 0;
   const detectedType = detectType(essay);
-  const target = detectedType === "email" ? 100 : 120;
+  const target = detectedType === "email" ? 80 : 100;
   setText(wordStatEl, "단어 " + words);
   setText(sentenceStatEl, "문장 " + sentences);
-  setText(targetHintEl, "권장 " + target + "+");
+  setText(targetHintEl, "권장 최소 " + target + "+");
 }
 
 // 서버측 draft 동기화 — localStorage와 별개로 DB에도 보존해서
@@ -1015,13 +1016,13 @@ function renderDimensionBars(dimensions) {
   dimensionBarsEl.innerHTML = "";
   dimensions.forEach(function(d) {
     const pct = (d.score / 5) * 100;
-    const band = Math.max(1, Math.min(6, d.score + 1));
+    const taskScore = Math.max(0, Math.min(5, d.score));
     const row = document.createElement("div");
     row.className = "rubric-row";
     row.innerHTML =
       '<span class="rubric-name">' + esc(d.name) + '</span>' +
       '<div class="rubric-track"><div class="rubric-fill" style="width:0%" data-pct="' + pct + '"></div></div>' +
-      '<span class="rubric-val">' + band.toFixed(1) + ' / 6</span>';
+      '<span class="rubric-val">' + taskScore.toFixed(1) + ' / 5</span>';
     dimensionBarsEl.appendChild(row);
   });
   requestAnimationFrame(function() {
@@ -1033,7 +1034,7 @@ function renderDimensionBars(dimensions) {
 
 function animateScoreRing(score) {
   const circumference = 213.6;
-  scoreArcEl.style.strokeDashoffset = circumference - (score / 6) * circumference;
+  scoreArcEl.style.strokeDashoffset = circumference - (score / 5) * circumference;
 }
 
 function renderSentenceEdits(items) {
@@ -1222,8 +1223,8 @@ function renderBeforeAfterProjection(p) {
   const box = document.createElement("div");
   box.className = "edit-item";
   box.innerHTML =
-    "<p><strong>현재 예상 밴드</strong>: " + p.current_band_1_6.toFixed(1) + " / 6</p>" +
-    "<p><strong>교정 후 예상 밴드</strong>: " + p.projected_band_1_6.toFixed(1) + " / 6</p>" +
+    "<p><strong>현재 예상 과제 점수</strong>: " + p.current_score_0_5.toFixed(1) + " / 5</p>" +
+    "<p><strong>교정 후 예상 과제 점수</strong>: " + p.projected_score_0_5.toFixed(1) + " / 5</p>" +
     "<p><strong>예상 상승</strong>: +" + p.expected_gain_0_5.toFixed(2) + "점</p>";
   beforeAfterProjectionEl.appendChild(box);
 }
@@ -1236,7 +1237,7 @@ function renderScoreSimulator(items) {
     box.innerHTML =
       "<p><strong>액션</strong>: " + esc(item.action) + "</p>" +
       "<p><strong>예상 상승</strong>: +" + item.expected_delta_0_5 + "점</p>" +
-      "<p><strong>예상 밴드</strong>: " + item.projected_band_1_6 + " / 6</p>";
+      "<p><strong>예상 과제 점수</strong>: " + item.projected_score_0_5 + " / 5</p>";
     scoreSimulatorEl.appendChild(box);
   });
 }
@@ -1343,7 +1344,7 @@ function renderExaminerFeedback(payload) {
 function renderBoosterList(result) {
   const items = [];
   if (result.grammar_stats && result.grammar_stats.total >= 4) {
-    items.push("문법 오류 총합을 4개 이하로 줄이면 밴드 상한이 크게 완화됩니다.");
+    items.push("문법 오류 총합을 4개 이하로 줄이면 과제 점수 상한이 크게 완화됩니다.");
   }
   if (result.prompt_fit && result.prompt_fit.score < 3.5) {
     items.push("프롬프트 키워드 반영률을 올리면 Content 점수 안정성이 개선됩니다.");
@@ -1352,7 +1353,7 @@ function renderBoosterList(result) {
     items.push("누락된 샘플 포인트를 보완하면 구조 점수 상승이 쉽습니다.");
   }
   if (!items.length) {
-    items.push("현재 밸런스가 좋아서 문법 정밀도와 어휘 치환만 다듬으면 상위 밴드 진입이 가능합니다.");
+    items.push("현재 균형이 좋아서 문법 정밀도와 어휘 치환만 다듬으면 4–5점대 과제 수행에 가까워질 수 있습니다.");
   }
   renderList(boosterListEl, items);
 }
@@ -1364,11 +1365,11 @@ function renderTrendLine(points, kind) {
   }
   const xs = points.map(function(_, i) { return 10 + (280 * i) / Math.max(1, points.length - 1); });
   const values = points.map(function(p) {
-    return kind === "score" ? (p.score_0_5 + 1.0) : p.total_errors;
+    return kind === "score" ? p.score_0_5 : p.total_errors;
   });
   const maxY = Math.max.apply(null, values) || 1;
   const coords = points.map(function(p, i) {
-    const val = kind === "score" ? (p.score_0_5 + 1.0) : p.total_errors;
+    const val = kind === "score" ? p.score_0_5 : p.total_errors;
     const y = 80 - (70 * val / maxY);
     return xs[i].toFixed(1) + "," + y.toFixed(1);
   });
@@ -1467,10 +1468,10 @@ function renderRisk(risk) {
 function renderDashboard(data) {
   dashboardCache = data;
   setText(dashAttemptEl, data.attempt_count);
-  setText(dashAvgScoreEl, (data.avg_score_0_5 + 1.0).toFixed(2));
+  setText(dashAvgScoreEl, data.avg_score_0_5.toFixed(2) + " / 5");
   setText(dashAvgPromptFitEl, data.avg_prompt_fit.toFixed(2));
   setText(dashTrendEl, data.score_trend.length
-    ? data.score_trend.map(function(p) { return "#" + p.submission_id + ":" + (p.score_0_5 + 1.0).toFixed(1); }).join(" › ")
+    ? data.score_trend.map(function(p) { return "#" + p.submission_id + ":" + p.score_0_5.toFixed(1); }).join(" › ")
     : "데이터 없음");
   setText(dashGrammarEl, data.top_grammar_issues.length
     ? data.top_grammar_issues.map(function(x) { return x.type + "(" + x.count + ")"; }).join(", ")
@@ -1506,7 +1507,7 @@ async function fetchHistory() {
       const legacyTag = row.is_legacy ? ' <span class="badge small-badge" title="이전 버전 채점 기준 — 최신 결과와 직접 비교하면 부정확할 수 있어요">이전 기준</span>' : "";
       div.innerHTML =
         "<span>#" + esc(row.id) + " · " + esc(typeLabel) + " · " + esc(new Date(row.created_at).toLocaleString()) + legacyTag + "</span>" +
-        "<strong>Band " + esc(row.score_band_1_6.toFixed(1)) + " / 6</strong>";
+        "<strong>과제 " + esc(row.estimated_score_0_5.toFixed(1)) + " / 5</strong>";
 
       const actions = document.createElement("span");
       actions.className = "history-actions";
@@ -1580,7 +1581,7 @@ async function evaluateEssay(isExamMode) {
   const payload = {
     essay_text: essay,
     prompt_text: promptTextEl ? promptTextEl.value.trim() : "",
-    target_score_0_5: Math.max(0, Math.min(5, Number(targetScoreEl.value || 5.0) - 1.0)),
+    target_score_0_5: Math.max(0, Math.min(5, Number(targetScoreEl.value || 5.0))),
     exam_mode: Boolean(isExamMode),
   };
 
@@ -1611,14 +1612,16 @@ async function evaluateEssay(isExamMode) {
     const result = data.result;
     lastResult = result;
 
-    const s = result.score_band_1_6;
-    const lo = Math.floor(s * 2) / 2;
-    const hi = Math.min(6, lo + 0.5);
-    setText(score05El, lo.toFixed(1) + "~" + hi.toFixed(1));
-    setText(score30El, result.estimated_score_30);
-    setText(writingRangeEl, result.score_profile.writing);
-    setText(totalRangeEl, result.score_profile.total);
-    setText(aiModeBadgeEl, result.ai_mode === "ai" ? (providerLabel(result.ai_provider) + " 연동") : "로컬");
+    const s = Number(result.estimated_score_0_5 || 0);
+    setText(score05El, s.toFixed(1));
+    setText(score30El, "0–5");
+    setText(writingRangeEl, "3개 과제 완료 후");
+    const sourceLabel = result.score_source === "llm"
+      ? providerLabel(result.ai_provider) + " AI 루브릭"
+      : (result.score_source === "heuristic_fallback" ? "내장 기준(안전 대체)" : "내장 기준");
+    setText(totalRangeEl, sourceLabel);
+    setText(scoreSourceDetailEl, result.score_source_detail || "");
+    setText(aiModeBadgeEl, sourceLabel);
     if (result.grammar_cap_applied) {
       if (grammarCapChipEl) grammarCapChipEl.hidden = false;
       setText(grammarCapBadgeEl, "적용됨");
@@ -1683,8 +1686,8 @@ async function evaluateEssay(isExamMode) {
 
     setText(rewriteMinimalEl, result.target_rewrite.minimal);
     setText(rewriteAggressiveEl, result.target_rewrite.aggressive);
-    const overlapBand = Math.max(1, Math.min(6, Number(result.sample_comparison.overlap_score || 0) + 1));
-    setText(sampleOverlapEl, overlapBand.toFixed(1));
+    const overlapScore = Math.max(0, Math.min(5, Number(result.sample_comparison.overlap_score || 0)));
+    setText(sampleOverlapEl, overlapScore.toFixed(1));
     setText(sampleMatchedEl, result.sample_comparison.matched_points.join(", ") || "없음");
     setText(sampleMissingEl, result.sample_comparison.missing_points.join(", ") || "없음");
     setText(sampleParagraphEl, result.upgraded_sample_paragraph);

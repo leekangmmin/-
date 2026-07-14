@@ -35,7 +35,6 @@ function count(text, re) { return (text.match(re) || []).length; }
 function clamp(n,min,max) { return Math.max(min,Math.min(max,n)); }
 function quarter(n) { return Math.round(clamp(n,0,5)*4)/4; }
 function half(n) { return Math.round(clamp(n,0,5)*2)/2; }
-function halfBand(n) { return Math.round(clamp(n,1,6)*2)/2; }
 
 function detectType(text) {
   let signals = 0;
@@ -75,7 +74,7 @@ function score(text,type) {
   const structureAnalysis=analyzeStructure(text,type), structureMoves=structureAnalysis.detected.length;
   const structureTotal=structureAnalysis.requiredCount;
   const email=type==="email"?emailSignals(text):null;
-  const target = type === "email" ? 100 : 120;
+  const target = type === "email" ? 80 : 100;
   const structure = quarter(1.2 + 2.5*(structureMoves/structureTotal) + Math.min(paragraphs,4)*.25);
   const content = type==="email"
     ? quarter(1.4+Math.min(ws.length/target,1)*1.2+(email.purpose?.8:0)+Math.min(email.details,4)*.2+(email.polite>=2?.4:0)+(prompt.value.trim()?topicFit(prompt.value,text)*.8:.4))
@@ -99,7 +98,7 @@ function score(text,type) {
   } else if (ws.length>=target&&diversity>=.48&&evidence>=2&&transitions>=2&&/\b(i (?:firmly |strongly )?(?:believe|agree|disagree|maintain|support)|in my view)\b/i.test(text)) {
     raw += .35;
   }
-  return {dims,internal:half(raw),band:halfBand(raw+1),words:ws.length,paragraphs,transitions,evidence,diversity};
+  return {dims,taskScore:half(raw),words:ws.length,paragraphs,transitions,evidence,diversity};
 }
 
 function topicFit(promptText,answerText) {
@@ -117,11 +116,11 @@ function render() {
   const text=essay.value.trim(), wc=words(text).length;
   if (wc<60) { $("status").textContent="최소 60단어 이상 작성해 주세요."; return; }
   const type=detectType(text), result=score(text,type), moves=analyzeStructure(text,type);
-  $("bandScore").textContent=result.band.toFixed(1); $("taskName").textContent=type==="email"?"Write an Email":"Academic Discussion";
+  $("bandScore").textContent=result.taskScore.toFixed(1); $("taskName").textContent=type==="email"?"Write an Email":"Academic Discussion";
   $("summary").textContent=`${wc}단어 답안입니다. 핵심 구조 ${moves.detected.length}/${moves.requiredCount}개가 감지됐습니다.`;
   renderBars(result.dims); list("detected",moves.detected.map(x=>LABELS[x]),"아직 감지된 항목이 없습니다."); list("missing",moves.missing.map(x=>LABELS[x]),"핵심 구조가 모두 포함됐습니다.");
   $("nextAction").textContent=moves.missing.length?`${LABELS[moves.missing[0]]}을(를) 한 문장으로 보완하세요.`:"각 근거가 질문에 직접 연결되는지 검토하세요.";
-  const strengths=[],weaknesses=[]; if(result.words >= (type==="email"?100:120)) strengths.push("권장 분량을 충족했습니다."); else weaknesses.push("핵심 근거나 상황 설명을 더해 권장 분량을 채우세요."); if(result.paragraphs>=3) strengths.push("문단별 기능이 비교적 분명합니다."); else weaknesses.push("아이디어 경계에 맞춰 문단을 나누세요."); if(result.evidence>=2) strengths.push("이유·예시·결과 연결이 보입니다."); else weaknesses.push("주장 뒤에 구체적인 이유와 예시를 추가하세요."); if(result.transitions>=2) strengths.push("연결어로 흐름을 표시했습니다."); else weaknesses.push("For example, As a result 같은 연결 표현을 활용하세요.");
+  const strengths=[],weaknesses=[]; if(result.words >= (type==="email"?80:100)) strengths.push("권장 최소 분량을 충족했습니다."); else weaknesses.push("핵심 근거나 상황 설명을 더해 전개를 보완하세요."); if(result.paragraphs>=3) strengths.push("문단별 기능이 비교적 분명합니다."); else weaknesses.push("아이디어 경계에 맞춰 문단을 나누세요."); if(result.evidence>=2) strengths.push("이유·예시·결과 연결이 보입니다."); else weaknesses.push("주장 뒤에 구체적인 이유와 예시를 추가하세요."); if(result.transitions>=2) strengths.push("연결어로 흐름을 표시했습니다."); else weaknesses.push("For example, As a result 같은 연결 표현을 활용하세요.");
   list("strengths",strengths,"감지된 강점보다 보완 항목이 먼저 보입니다."); list("weaknesses",weaknesses,"큰 구조 누락이 감지되지 않았습니다.");
   const starters=type==="email"?["I am writing regarding...","Could you please...?","I would also appreciate it if...","Thank you for your assistance."]:["I believe this matters because...","I agree with [Name]'s point that...","One practical example is...","As a result, this would..."];
   $("starters").innerHTML=starters.map(x=>`<div class="starter">${escapeHtml(x)}</div>`).join(""); $("results").classList.remove("hidden"); $("status").textContent="브라우저 안에서 분석을 완료했습니다."; $("results").scrollIntoView({behavior:"smooth",block:"start"});

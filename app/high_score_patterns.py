@@ -28,7 +28,7 @@ _PATTERNS = {
         "situation_detail": r"\b(unfortunately|because|due to|as|the problem|the issue|specifically)\b",
         "polite_request": r"\b(could you please|would you please|i would be grateful if|i would appreciate it if|please)\b",
         "second_action": r"\b(i would also|also appreciate|in addition|and let me know|as well)\b",
-        "commitment": r"\b(i am committed to|thank you for|grateful for|appreciate your|your understanding)\b",
+        "commitment": r"\b(i am committed to|thank you(?: very much)? for|grateful for|appreciate your|your understanding)\b",
         "closing": r"\b(sincerely|best regards|kind regards|regards|yours truly)\b",
     },
     "academic_discussion": {

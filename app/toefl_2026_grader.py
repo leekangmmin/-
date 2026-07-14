@@ -6,9 +6,10 @@ the rubric is trusted system text, while the task prompt and response are sent
 as untrusted JSON data.  That preserves the attached scoring contract without
 turning text inside a student's essay into model instructions.
 
-The production score remains the deterministic scorer in :mod:`app.scorer`.
-Callers may use this module for shadow evaluation or explicitly enabled cloud
-AI evaluation, but must not present a single task score as a 1-6 section band.
+When a user explicitly enables a supported cloud provider, production may use
+this contract for the displayed task score.  Offline and failed-provider paths
+fall back to :mod:`app.scorer`.  A single task score must never be presented as
+a 1-6 section band.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ FeedbackLanguage = Literal["ko", "en"]
 ErrorType = Literal["verb_as_subject", "missing_article", "prep_wrong_pos", "other"]
 ErrorSeverity = Literal["meaning_impeding", "minor"]
 
-TOEFL_2026_GRADER_PROMPT_VERSION = "toefl-2026-task-grader-v1"
+TOEFL_2026_GRADER_PROMPT_VERSION = "toefl-2026-task-grader-v2"
 
 EMAIL_DIMENSIONS: tuple[str, ...] = (
     "purposeful_communication",
@@ -80,11 +81,13 @@ SPECIAL SCORING RULES
 - [ETS-VERIFIED] FIRST-DRAFT STANDARD: Accept minor timed-writing errors that do not impede meaning. Do not over-penalize them.
 - [ETS-VERIFIED] COMPLETENESS BEATS POLISH: Coverage of all required points outweighs elegance. A missing required point lowers the ceiling by at least one full band.
 - [ETS-VERIFIED] NO FACT-CHECKING: Invented reasons, names, and dates are acceptable. Concrete invented detail can be stronger than vague content.
-- [ETS-VERIFIED] TEMPLATE PENALTY: Detect obvious formulaic filler and reflect it in the relevant language or discourse dimension and the holistic score.
-- [ETS-VERIFIED] LENGTH: Email target is approximately 80-120 words; Academic Discussion target is approximately 100-130 words. Under about 80 words likely lacks development. Over about 150 words may show weak editing; penalize language only when extra length introduces problems.
+- [ETS-VERIFIED] TEMPLATE PENALTY: Detect obvious formulaic filler and reflect it in the relevant language or discourse dimension and the holistic score. A conventional Email greeting/sign-off or an Academic Discussion framing phrase is not, by itself, template abuse. Penalize only generic memorized language that adds no prompt-specific meaning, crowds out the writer's own contribution, or obscures the response.
+- [CALIBRATED] LENGTH: Email 80-120 words and Academic Discussion 100-130 words are planning targets, not hard score caps. A longer response can earn 5 when it stays relevant, purposeful, well controlled, and nearly error-free. Do not deduct solely for exceeding the target; deduct only when brevity prevents development or extra length causes repetition, irrelevance, weak editing, or language-control problems.
+- [CALIBRATED] FULL-SCORE EMAIL SHAPE: A complete, specific context/purpose, multiple polite requests when the prompt calls for them, and a suitable opening and closing can demonstrate full task accomplishment. Do not require a promise or commitment when gratitude appropriately closes the exchange.
+- [CALIBRATED] FULL-SCORE DISCUSSION SHAPE: A response may earn 5 by stating a clear position, developing an independent rationale, engaging one or more named classmates, answering a counterview, and using a concrete example. Multi-paragraph organization and a brief concluding reinforcement are acceptable, but paragraph count and formulaic framing alone neither earn nor lose points.
 
 SCORING PROCEDURE
-1. Use expected_word_count and determine whether it is inside the task target range.
+1. Use expected_word_count and report whether it is inside the advisory task target range; never turn that boolean into an automatic penalty.
 2. Compare every required prompt point or discussion post with the response; list covered and missed points.
 3. Score every task-specific rubric dimension from 0 to 5.
 4. Classify every notable error as meaning_impeding or minor.
@@ -302,6 +305,104 @@ def parse_task_grade(
     return result
 
 
+def task_grade_json_schema(task_type: TaskType) -> dict[str, Any]:
+    """Return the exact provider-facing JSON Schema for one task type.
+
+    Pydantic remains the final authority after a provider response arrives.
+    The explicit schema also constrains providers that support structured
+    output, including the exact task-specific dimension keys.
+    """
+    dimension_properties = {
+        key: {
+            "type": "object",
+            "properties": {
+                "score": {"type": "integer", "minimum": 0, "maximum": 5},
+                "comment": {"type": "string"},
+            },
+            "required": ["score", "comment"],
+            "additionalProperties": False,
+        }
+        for key in dimensions_for(task_type)
+    }
+    string_array = {"type": "array", "items": {"type": "string"}}
+    return {
+        "type": "object",
+        "properties": {
+            "task_type": {"type": "string", "enum": [task_type]},
+            "word_count": {"type": "integer", "minimum": 0},
+            "in_target_range": {"type": "boolean"},
+            "overall_score": {"type": "integer", "minimum": 0, "maximum": 5},
+            "band_label": {"type": "string"},
+            "required_points": {
+                "type": "object",
+                "properties": {
+                    "covered": string_array,
+                    "missed": string_array,
+                },
+                "required": ["covered", "missed"],
+                "additionalProperties": False,
+            },
+            "dimensions": {
+                "type": "object",
+                "properties": dimension_properties,
+                "required": list(dimensions_for(task_type)),
+                "additionalProperties": False,
+            },
+            "caps_triggered": string_array,
+            "template_flag": {
+                "type": "object",
+                "properties": {
+                    "detected": {"type": "boolean"},
+                    "evidence": string_array,
+                },
+                "required": ["detected", "evidence"],
+                "additionalProperties": False,
+            },
+            "error_patterns": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["verb_as_subject", "missing_article", "prep_wrong_pos", "other"],
+                        },
+                        "excerpt": {"type": "string"},
+                        "correction": {"type": "string"},
+                        "severity": {
+                            "type": "string",
+                            "enum": ["meaning_impeding", "minor"],
+                        },
+                    },
+                    "required": ["type", "excerpt", "correction", "severity"],
+                    "additionalProperties": False,
+                },
+            },
+            "meaning_impeding_error_count": {"type": "integer", "minimum": 0},
+            "strengths": string_array,
+            "priority_fixes": string_array,
+            "one_line_verdict": {"type": "string"},
+        },
+        "required": [
+            "task_type",
+            "word_count",
+            "in_target_range",
+            "overall_score",
+            "band_label",
+            "required_points",
+            "dimensions",
+            "caps_triggered",
+            "template_flag",
+            "error_patterns",
+            "meaning_impeding_error_count",
+            "strengths",
+            "priority_fixes",
+            "one_line_verdict",
+        ],
+        "additionalProperties": False,
+    }
+
+
 def schema_error_message(exc: Exception) -> str:
     """Return a compact retry instruction without echoing student content."""
     if isinstance(exc, ValidationError):
@@ -327,4 +428,5 @@ __all__ = [
     "is_in_target_range",
     "parse_task_grade",
     "schema_error_message",
+    "task_grade_json_schema",
 ]

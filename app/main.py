@@ -100,7 +100,6 @@ from app.models import (
     TargetBandStrategyItem,
     RepetitionTrainingItem,
     ScoreSimulatorItem,
-    ScoreBandProfile,
     ScoreTrendPoint,
     SubmissionHistoryItem,
     SubmissionHistoryResponse,
@@ -125,10 +124,12 @@ from app.models import (
     BuildASentenceSubmitResponse,
 )
 from app.ai_mode import ai_enabled, ai_enhance, ai_runtime_config
+from app.operational_grader import OperationalGradeOutcome, grade_operational_task
+from app.toefl_2026_grader import TOEFL_2026_GRADER_PROMPT_VERSION, TaskGradeResult
 from app.local_ai import get_local_ai_manager
 from app.db import get_setting, set_setting
 from app.models import EngineInfo
-from app.scorer import analyze_essay, grammar_cap_status, score_essay, score_essay_detailed
+from app.scorer import analyze_essay, grammar_cap_status, score_essay_detailed
 from app.high_score_patterns import structure_guide
 from app.versions import (
     CALIBRATION_VERSION,
@@ -146,28 +147,27 @@ from app.vocab_analysis import analyze_vocabulary
 
 app = FastAPI(title="TOEFL Writing Evaluator", version="1.0.0")
 
-TOEFL_BAND_TABLE: dict[float, dict[str, str]] = {
-    6.0: {"reading": "29-30", "listening": "28-30", "speaking": "28-30", "writing": "29-30", "total": "114+"},
-    5.5: {"reading": "27-28", "listening": "26-27", "speaking": "27", "writing": "27-28", "total": "107+"},
-    5.0: {"reading": "24-26", "listening": "22-25", "speaking": "25-26", "writing": "24-26", "total": "95+"},
-    4.5: {"reading": "22-23", "listening": "20-21", "speaking": "23-24", "writing": "21-23", "total": "86+"},
-    4.0: {"reading": "18-21", "listening": "17-19", "speaking": "20-22", "writing": "17-20", "total": "72+"},
-    3.5: {"reading": "12-17", "listening": "13-16", "speaking": "18-19", "writing": "15-16", "total": "58+"},
-    3.0: {"reading": "6-11", "listening": "9-12", "speaking": "16-17", "writing": "13-14", "total": "44+"},
-    2.5: {"reading": "4-5", "listening": "6-8", "speaking": "13-15", "writing": "11-12", "total": "34+"},
-    2.0: {"reading": "3", "listening": "4-5", "speaking": "10-12", "writing": "7-10", "total": "24+"},
-    1.5: {"reading": "2", "listening": "2-3", "speaking": "5-9", "writing": "3-6", "total": "12+"},
-    1.0: {"reading": "0-1", "listening": "0-1", "speaking": "0-4", "writing": "0-2", "total": "0+"},
+_LLM_DIMENSION_LABELS = {
+    "purposeful_communication": "목적·필수 내용 충족",
+    "social_conventions_tone": "상황에 맞는 어조·관습",
+    "language_use": "문법·어휘·문장 다양성",
+    "organization": "논리적 구성",
+    "elaboration_relevance": "관련성·구체적 전개",
+    "syntax_vocabulary": "구문·어휘",
+    "discourse_conventions": "토론 참여·의견 연결",
+    "language_accuracy": "언어 정확성",
 }
 
 
-def _to_band_1_6(score_0_5: float) -> float:
-    raw = max(1.0, min(6.0, score_0_5 + 1.0))
-    return round(raw * 2.0) / 2.0
-
-
-def _band_profile(score_band_1_6: float) -> dict[str, str]:
-    return TOEFL_BAND_TABLE.get(score_band_1_6, TOEFL_BAND_TABLE[1.0])
+def _llm_dimensions(grade: TaskGradeResult) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": _LLM_DIMENSION_LABELS.get(key, key),
+            "score": float(value.score),
+            "reason": value.comment,
+        }
+        for key, value in grade.dimensions.items()
+    ]
 
 
 def _ai_public_config() -> AIConfigResponse:
@@ -271,7 +271,7 @@ def capabilities() -> dict[str, Any]:
         "pwa": False,
         "admin_api": False,
         "hosted_ai": False,
-        "score_policy": "heuristic_score_only",
+        "score_policy": "llm_when_enabled_with_heuristic_fallback",
     }
 
 
@@ -308,6 +308,23 @@ def test_ai_connection() -> dict[str, str | bool]:
     if not ai_enabled(cfg):
         return {"ok": False, "message": "AI 연결이 비활성화되어 있습니다."}
 
+    provider = str(cfg.get("provider", "local")).strip().lower()
+    if provider in {"openai", "claude", "gemini"}:
+        sample = (
+            "I agree with Mina that clear written instructions help employees. They create a record "
+            "that people can review after a meeting, so important details are less likely to be lost. "
+            "For example, a project checklist can show deadlines and responsibilities to every team member."
+        )
+        outcome = grade_operational_task(
+            task_type="academic_discussion",
+            essay_text=sample,
+            prompt_text="Should employees communicate important workplace instructions in writing or by speaking?",
+            cfg=cfg,
+        )
+        if outcome.grade is not None:
+            return {"ok": True, "message": f"{provider} 2026 루브릭 채점 연결 테스트 성공"}
+        return {"ok": False, "message": outcome.detail}
+
     sample = "Students is often tired and they needs clearer feedback to improve writing quality."
     result = ai_enhance(
         sample,
@@ -337,18 +354,50 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
     scoring_breakdown = score_essay_detailed(payload.essay_text, prompt_type)
     dimensions, total_score = scoring_breakdown.dimensions, scoring_breakdown.total_0_5
     prompt_fit_data = evaluate_prompt_fit(payload.prompt_text, payload.essay_text)
+    prompt_fit_evaluated = bool(payload.prompt_text.strip())
+    if not prompt_fit_evaluated:
+        # 문제가 없는데 "낮은 적합성"으로 해석하지 않는다. 파생 추천은
+        # 중립값으로 게이트하고, API/UI에는 evaluated=false를 명시한다.
+        prompt_fit_data = {
+            "score": 5.0,
+            "evaluated": False,
+            "reason_ko": "문제 지문이 입력되지 않아 주제 반영도를 측정하지 않았습니다.",
+            "reason_en": "Task-response fit was not measured because the prompt was not supplied.",
+            "matched_keywords": [],
+            "missing_keywords": [],
+        }
+    runtime_ai = ai_runtime_config()
+    operational_grade: OperationalGradeOutcome = grade_operational_task(
+        task_type=prompt_type,
+        essay_text=payload.essay_text,
+        prompt_text=payload.prompt_text,
+        cfg=runtime_ai,
+    )
+    llm_grade = operational_grade.grade
+
+    if llm_grade is not None:
+        # 운영 화면 점수의 단일 진실 공급원: 검증을 통과한 2026 루브릭 결과.
+        total_score = float(llm_grade.overall_score)
+        dimensions = _llm_dimensions(llm_grade)  # type: ignore[assignment]
 
     # prompt-fit 감점은 파생 계산(피드백/시뮬레이터/프로젝션) 이전에 적용해
-    # 표시 점수와 모든 파생 수치가 같은 점수를 기준으로 하도록 한다.
-    if payload.prompt_text.strip():
+    # 표시 점수와 모든 파생 수치가 같은 점수를 기준으로 하도록 한다. LLM 루브릭은
+    # 과제 충족도를 자체 평가하므로 휴리스틱 감점을 다시 중복 적용하지 않는다.
+    if llm_grade is None and payload.prompt_text.strip():
         if prompt_fit_data["score"] < 2.5:
             total_score = max(0.0, total_score - 1.0)
         elif prompt_fit_data["score"] < 3.0:
             total_score = max(0.0, total_score - 0.5)
 
     feedback = build_feedback(payload.essay_text, prompt_type, total_score)
+    if llm_grade is not None:
+        if llm_grade.strengths:
+            feedback["strengths"] = llm_grade.strengths
+        if llm_grade.priority_fixes:
+            feedback["weaknesses"] = llm_grade.priority_fixes
+            feedback["action_plan"] = llm_grade.priority_fixes
     claim_map_data = map_claim_evidence(payload.essay_text)
-    grammar_stats_data = grammar_error_stats(payload.essay_text)
+    grammar_stats_data = grammar_error_stats(payload.essay_text, prompt_type)
     target_score_0_5 = min(5.0, max(0.0, payload.target_score_0_5))
     rewrite_data = rewrite_for_target(payload.essay_text, total_score, target_score_0_5)
     sample_data = sample_compare(payload.essay_text, prompt_type)
@@ -402,16 +451,17 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
     auto_rewrite = apply_corrections_to_essay(payload.essay_text, grammar_corrections_data)
     revision_diff = build_revision_diff(payload.essay_text, auto_rewrite)
 
-    estimated_30 = int(round((total_score / 5.0) * 30))
-    score_band_1_6 = _to_band_1_6(total_score)
-    score_profile = _band_profile(score_band_1_6)
-    score_profile_obj = ScoreBandProfile(**score_profile)
-    cap = grammar_cap_status(payload.essay_text)
+    cap = grammar_cap_status(payload.essay_text, prompt_type)
 
-    runtime_ai = ai_runtime_config()
     ai_mode = "local"
     ai_provider = "none"
-    if ai_enabled(runtime_ai):
+    if llm_grade is not None:
+        ai_mode = "ai"
+        ai_provider = cast(
+            Literal["none", "local", "openai", "claude", "gemini"],
+            operational_grade.provider,
+        )
+    elif ai_enabled(runtime_ai) and str(runtime_ai.get("provider", "local")) == "local":
         ai_payload = ai_enhance(
             payload.essay_text,
             prompt_type,
@@ -432,21 +482,28 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
 
     result = EvaluationResult(
         estimated_score_0_5=total_score,
-        estimated_score_30=estimated_30,
-        score_band_1_6=score_band_1_6,
+        estimated_score_30=None,
+        score_band_1_6=None,
         engine=EngineInfo(
             exam_spec_version=EXAM_SPEC_VERSION,
             rubric_version=RUBRIC_VERSION,
             scoring_engine_version=SCORING_ENGINE_VERSION,
             grammar_rules_version=GRAMMAR_RULES_VERSION,
             result_schema_version=RESULT_SCHEMA_VERSION,
-            prompt_version=SCORING_PROMPT_VERSION,
-            provider=SCORING_PROVIDER,
-            model=SCORING_MODEL,
-            model_identifier=SCORING_MODEL_IDENTIFIER,
+            prompt_version=(TOEFL_2026_GRADER_PROMPT_VERSION if llm_grade is not None else SCORING_PROMPT_VERSION),
+            provider=(operational_grade.provider if llm_grade is not None else SCORING_PROVIDER),
+            model=(operational_grade.model if llm_grade is not None else SCORING_MODEL),
+            model_identifier=(
+                f"{operational_grade.provider}:{operational_grade.model}"
+                if llm_grade is not None
+                else SCORING_MODEL_IDENTIFIER
+            ),
             calibration_version=CALIBRATION_VERSION,
         ),
-        score_profile=score_profile_obj,
+        score_profile=None,
+        score_source=operational_grade.source,
+        score_source_detail=operational_grade.detail,
+        llm_grade=llm_grade,
         ai_mode=ai_mode,
         ai_provider=ai_provider,
         grammar_cap_applied=bool(cap["applied"]),
@@ -469,6 +526,7 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
                 total_score,
                 prompt_fit_data["score"],
                 feedback["weaknesses"],
+                prompt_fit_evaluated,
             )
         ),
         template_coach=TemplateCoach(**template_data),
@@ -537,6 +595,9 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         "estimated_score_30": result.estimated_score_30,
         "score_band_1_6": result.score_band_1_6,
         "engine": result.engine.model_dump() if result.engine else None,
+        "score_source": result.score_source,
+        "score_source_detail": result.score_source_detail,
+        "llm_grade": result.llm_grade.model_dump() if result.llm_grade else None,
         # 점수공식 변경 금지 게이트용 진단 데이터 — 사용자에게 노출되지 않는 내부 저장.
         # 전문가 데이터 확보 후 반올림 경계 구간 오차 분석에 사용한다.
         "scoring_quantization": {
@@ -546,7 +607,7 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
             "component_scores": scoring_breakdown.component_scores,
             "scoring_formula_version": scoring_breakdown.scoring_formula_version,
         },
-        "score_profile": result.score_profile.model_dump(),
+        "score_profile": result.score_profile.model_dump() if result.score_profile else None,
         "ai_mode": result.ai_mode,
         "ai_provider": result.ai_provider,
         "grammar_cap_applied": result.grammar_cap_applied,
@@ -554,6 +615,7 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         "confidence": result.confidence,
         "confidence_reason": result.confidence_reason,
         "prompt_fit_score": result.prompt_fit.score,
+        "prompt_fit_evaluated": result.prompt_fit.evaluated,
         "strengths": result.strengths,
         "weaknesses": result.weaknesses,
         "action_plan": result.action_plan,
@@ -1085,7 +1147,7 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.set_text_color(18, 86, 136)
         set_report_font("B", 11)
         pdf.set_xy(left + 4, card_y + 4)
-        pdf.cell(0, 5, "Estimated TOEFL Writing Band (1-6)")
+        pdf.cell(0, 5, "Estimated Task Score (0-5)")
         set_report_font("B", 22)
         pdf.set_xy(left + 4, card_y + 8.2)
         pdf.cell(0, 8, score_text)
@@ -1139,8 +1201,7 @@ def download_report(submission_id: int) -> FileResponse:
 
         for dim in dimensions[:6]:
             score = float(dim.get("score", 0.0))
-            # Internal dimension score is 0-5; display as user-facing 1-6 band.
-            display_score = max(1.0, min(6.0, score + 1.0))
+            display_score = max(0.0, min(5.0, score))
             pdf.set_xy(left, y)
             pdf.cell(label_w, 6, safe(str(dim.get("name", ""))))
 
@@ -1153,7 +1214,7 @@ def download_report(submission_id: int) -> FileResponse:
             pdf.rect(track_x, y + 1.2, fill_w, 3.8, "F")
 
             pdf.set_xy(track_x + bar_w + 3, y)
-            pdf.cell(value_w, 6, f"{display_score:.1f}/6")
+            pdf.cell(value_w, 6, f"{display_score:.1f}/5")
             y += 7
 
         pdf.set_y(y + 2)
@@ -1220,7 +1281,7 @@ def download_report(submission_id: int) -> FileResponse:
         rows = list_recent(limit=8)
         if len(rows) < 2:
             return
-        points = [float(r.get("estimated_score_0_5", 0)) + 1.0 for r in rows]
+        points = [float(r.get("estimated_score_0_5", 0)) for r in rows]
         chart_title("Recent Score Trend")
 
         left = pdf.l_margin
@@ -1230,9 +1291,9 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.set_draw_color(205, 212, 224)
         pdf.rect(left, top, width, height)
 
-        # Score risk zones based on 1-6 band: low(<4), medium(4-5), high(>=5)
-        zone_low_y = top + height - ((4.0 - 1.0) / 5.0) * height
-        zone_mid_y = top + height - ((5.0 - 1.0) / 5.0) * height
+        # Task-score guidance zones: low(<3), medium(3-4), high(>=4)
+        zone_low_y = top + height - (3.0 / 5.0) * height
+        zone_mid_y = top + height - (4.0 / 5.0) * height
         pdf.set_fill_color(254, 226, 226)
         pdf.rect(left, zone_low_y, width, top + height - zone_low_y, "F")
         pdf.set_fill_color(254, 243, 199)
@@ -1257,10 +1318,10 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.set_xy(lx + 38, ly - 1)
         pdf.cell(14, 4, "low")
 
-        # y-axis labels (1 to 6)
+        # y-axis labels (0 to 5)
         set_report_font(size=8)
-        for tick in [1, 3, 5, 6]:
-            ty = top + height - ((tick - 1) / 5.0) * height
+        for tick in [0, 2, 4, 5]:
+            ty = top + height - (tick / 5.0) * height
             pdf.set_draw_color(232, 236, 243)
             pdf.line(left, ty, left + width, ty)
             pdf.set_xy(left - 8, ty - 2)
@@ -1284,7 +1345,7 @@ def download_report(submission_id: int) -> FileResponse:
         pdf.cell(width, 6, f"Latest submission: #{submission_id} | trend window: {len(points)}")
         pdf.set_xy(left, top + height + 5)
         set_report_font(size=8)
-        pdf.cell(width, 4, "x-axis: attempt order (old -> recent), y-axis: band(1-6)")
+        pdf.cell(width, 4, "x-axis: attempt order (old -> recent), y-axis: task score(0-5)")
         set_report_font(size=11)
         pdf.set_y(top + height + 8)
 
@@ -1295,30 +1356,25 @@ def download_report(submission_id: int) -> FileResponse:
         f"Prompt Type: {record['prompt_type']}",
         f"Analysis Mode: {result.get('ai_mode', 'local')}",
         "",
-        f"TOEFL SCORE (MAX 6.0): {result.get('score_band_1_6', 'n/a')}",
+        f"TASK SCORE (MAX 5.0): {result.get('estimated_score_0_5', 'n/a')}",
+        "Writing section band is not calculated from one task.",
+        safe(f"Score source: {result.get('score_source', 'legacy')} - {result.get('score_source_detail', '')}"),
         f"Confidence: {result.get('confidence', 'n/a')}",
         safe(str(result.get('confidence_reason', ''))),
         "",
         "Task Response Fit",
-        f"Score: {_to_band_1_6(float(result.get('prompt_fit_score', 0.0))):.1f}/6.0",
+        (
+            "Score: not measured (prompt not supplied)"
+            if result.get("prompt_fit_evaluated") is False
+            else f"Score: {float(result.get('prompt_fit_score', 0.0)):.1f}/5.0"
+        ),
         "",
         "Dimensions",
     ]
 
     for dim in result.get("dimensions", []):
-        line = f"- {dim.get('name', '')}: {_to_band_1_6(float(dim.get('score', 0.0))):.1f}/6.0"
+        line = f"- {dim.get('name', '')}: {float(dim.get('score', 0.0)):.1f}/5.0"
         lines.append(safe(line))
-
-    profile = result.get("score_profile", {})
-    lines.extend([
-        "",
-        "TOEFL Band Profile Ranges",
-        safe(f"Reading: {profile.get('reading', 'n/a')}"),
-        safe(f"Listening: {profile.get('listening', 'n/a')}"),
-        safe(f"Speaking: {profile.get('speaking', 'n/a')}"),
-        safe(f"Writing: {profile.get('writing', 'n/a')}"),
-        safe(f"Total: {profile.get('total', 'n/a')}"),
-    ])
 
     lines.extend([
         "",
@@ -1352,7 +1408,7 @@ def download_report(submission_id: int) -> FileResponse:
     bilingual_feedback = result.get("bilingual_feedback", {})
 
     # Cover page (executive summary)
-    score_text = str(result.get("score_band_1_6", "n/a"))
+    score_text = f"{result.get('estimated_score_0_5', 'n/a')} / 5"
     draw_cover_header(submission_id, str(record["created_at"]), score_text)
     draw_cover_kpis(
         str(result.get("confidence", "n/a")),
@@ -1439,8 +1495,8 @@ def download_report(submission_id: int) -> FileResponse:
         lines.append(
             safe(
                 "Before/After Projection: "
-                f"{before_after_projection.get('current_band_1_6', 'n/a')}/6.0 -> "
-                f"{before_after_projection.get('projected_band_1_6', 'n/a')}/6.0 "
+                f"{before_after_projection.get('current_score_0_5', 'n/a')}/5.0 -> "
+                f"{before_after_projection.get('projected_score_0_5', 'n/a')}/5.0 "
                 f"(gain {before_after_projection.get('expected_gain_0_5', 0)})"
             )
         )
@@ -1529,7 +1585,7 @@ def download_report(submission_id: int) -> FileResponse:
     for item in simulator[:4]:
         lines.append(
             safe(
-                f"- {item.get('action', '')}: +{item.get('expected_delta_0_5', 0)} (projected band {item.get('projected_band_1_6', 'n/a')})"
+                f"- {item.get('action', '')}: +{item.get('expected_delta_0_5', 0)} (projected task score {item.get('projected_score_0_5', 'n/a')}/5)"
             )
         )
 
@@ -1539,7 +1595,7 @@ def download_report(submission_id: int) -> FileResponse:
         lines.append(safe(f"  Why: {item.get('why', '')}"))
         lines.append(safe(f"  How: {item.get('how_to', '')}"))
 
-    lines.extend(["", "Target Band Strategy"])
+    lines.extend(["", "Target Task Score Strategy"])
     for item in target_band_strategy[:6]:
         lines.append(safe(f"- {item.get('title', '')}"))
         lines.append(safe(f"  {item.get('detail', '')}"))
@@ -1579,7 +1635,7 @@ def download_report(submission_id: int) -> FileResponse:
         "Grammar Penalty Impact",
         "Score Simulator",
         "Smart Recommendations",
-        "Target Band Strategy",
+        "Target Task Score Strategy",
         "Repetition Training",
         "Examiner Mode Comments",
         "Closing Note",
@@ -1704,7 +1760,7 @@ def weekly_report() -> WeeklyReportResponse:
             daily_submissions=[],
         )
 
-    scores = [float(r.get("score_band_1_6", 1.0)) for r in week_rows]
+    scores = [float(r.get("estimated_score_0_5", 0.0)) for r in week_rows]
 
     error_counts: dict[str, int] = {}
     for r in week_rows:
@@ -1717,7 +1773,7 @@ def weekly_report() -> WeeklyReportResponse:
     for r in week_rows:
         created = str(r.get("created_at", ""))
         day = created[:10] if len(created) >= 10 else "unknown"
-        daily[day].append(float(r.get("score_band_1_6", 1.0)))
+        daily[day].append(float(r.get("estimated_score_0_5", 0.0)))
 
     daily_list = [
         DailySubmissionCount(day=day, count=len(v), avg_score=round(sum(v) / len(v), 2))
@@ -1728,10 +1784,10 @@ def weekly_report() -> WeeklyReportResponse:
     best_s = round(max(scores), 2)
     worst_s = round(min(scores), 2)
 
-    if avg_s >= 5.0:
-        rec = f"이번 주 평균 {avg_s}점으로 훌륭합니다! 꾸준히 유지하면 6.0 달성이 가능합니다."
+    if avg_s >= 4.5:
+        rec = f"이번 주 평균 과제 점수는 {avg_s}/5입니다. 높은 완성도를 안정적으로 유지하세요."
     elif avg_s >= 4.0:
-        rec = f"평균 {avg_s}점입니다. {most_common} 오류를 집중 교정하면 5.5~6.0 구간 진입이 가능합니다."
+        rec = f"평균 과제 점수는 {avg_s}/5입니다. {most_common} 오류를 집중 교정하면 5점 요건에 가까워집니다."
     else:
         rec = f"평균 {avg_s}점입니다. {most_common} 교정을 우선 연습하고 매일 1회 이상 제출해보세요."
 
@@ -1760,8 +1816,8 @@ def compare_submissions(id1: int, id2: int) -> CompareResponse:
     res1 = r1["result"]
     res2 = r2["result"]
 
-    s1 = float(res1.get("score_band_1_6", 1.0))
-    s2 = float(res2.get("score_band_1_6", 1.0))
+    s1 = float(res1.get("estimated_score_0_5", 0.0))
+    s2 = float(res2.get("estimated_score_0_5", 0.0))
     g1 = int(res1.get("grammar_stats", {}).get("total", 0))
     g2 = int(res2.get("grammar_stats", {}).get("total", 0))
 
@@ -1781,8 +1837,9 @@ def compare_submissions(id1: int, id2: int) -> CompareResponse:
         submission_1=CompareScoreInfo(
             submission_id=id1,
             created_at=str(r1["created_at"])[:19],
-            score_band_1_6=s1,
-            estimated_score_30=int(res1.get("estimated_score_30", 0)),
+            task_score_0_5=s1,
+            score_band_1_6=res1.get("score_band_1_6"),
+            estimated_score_30=res1.get("estimated_score_30"),
             grammar_total=g1,
             strengths=res1.get("strengths", [])[:3],
             weaknesses=res1.get("weaknesses", [])[:3],
@@ -1790,8 +1847,9 @@ def compare_submissions(id1: int, id2: int) -> CompareResponse:
         submission_2=CompareScoreInfo(
             submission_id=id2,
             created_at=str(r2["created_at"])[:19],
-            score_band_1_6=s2,
-            estimated_score_30=int(res2.get("estimated_score_30", 0)),
+            task_score_0_5=s2,
+            score_band_1_6=res2.get("score_band_1_6"),
+            estimated_score_30=res2.get("estimated_score_30"),
             grammar_total=g2,
             strengths=res2.get("strengths", [])[:3],
             weaknesses=res2.get("weaknesses", [])[:3],

@@ -5,6 +5,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from app.toefl_2026_grader import TaskGradeResult
+
 PromptType = Literal["email", "academic_discussion"]
 
 
@@ -38,6 +40,7 @@ class SentenceEdit(BaseModel):
 
 class PromptFit(BaseModel):
     score: float
+    evaluated: bool = True
     reason_ko: str
     reason_en: str
     matched_keywords: list[str]
@@ -149,7 +152,8 @@ class GrammarCorrection(BaseModel):
 class ScoreSimulatorItem(BaseModel):
     action: str
     expected_delta_0_5: float
-    projected_band_1_6: float
+    projected_score_0_5: float
+    projected_band_1_6: Optional[float] = None
 
 
 class SmartRecommendation(BaseModel):
@@ -182,8 +186,8 @@ class GrammarImpactItem(BaseModel):
 class BeforeAfterProjection(BaseModel):
     current_score_0_5: float
     projected_score_0_5: float
-    current_band_1_6: float
-    projected_band_1_6: float
+    current_band_1_6: Optional[float] = None
+    projected_band_1_6: Optional[float] = None
     expected_gain_0_5: float
 
 
@@ -240,11 +244,16 @@ class EngineInfo(BaseModel):
 
 class EvaluationResult(BaseModel):
     estimated_score_0_5: float
-    estimated_score_30: int
-    score_band_1_6: float
+    # 단일 Email/Academic Discussion 과제만으로 Writing 섹션 점수는 산출할 수
+    # 없다. 아래 세 필드는 이전 저장 기록 호환용이며 새 결과에서는 null이다.
+    estimated_score_30: Optional[int] = None
+    score_band_1_6: Optional[float] = None
     # 과거 기록(엔진 버전 스탬프 도입 이전)과의 호환을 위해 optional
     engine: Optional[EngineInfo] = None
-    score_profile: ScoreBandProfile
+    score_profile: Optional[ScoreBandProfile] = None
+    score_source: Literal["llm", "heuristic", "heuristic_fallback"]
+    score_source_detail: str
+    llm_grade: Optional[TaskGradeResult] = None
     ai_mode: Literal["local", "ai"]
     ai_provider: Literal["none", "local", "openai", "claude", "gemini"]
     grammar_cap_applied: bool
@@ -298,8 +307,8 @@ class SubmissionHistoryItem(BaseModel):
     created_at: datetime
     prompt_type: PromptType
     estimated_score_0_5: float
-    score_band_1_6: float
-    estimated_score_30: int
+    score_band_1_6: Optional[float] = None
+    estimated_score_30: Optional[int] = None
     # v2.0.0(engine 스탬프 도입) 이전 레코드는 True. 서로 다른 엔진 버전의
     # 점수를 UI에서 동일 조건처럼 단순 비교하지 않도록 구분하는 데 사용한다.
     is_legacy: bool = True
@@ -375,8 +384,9 @@ class WeeklyReportResponse(BaseModel):
 class CompareScoreInfo(BaseModel):
     submission_id: int
     created_at: str
-    score_band_1_6: float
-    estimated_score_30: int
+    task_score_0_5: float
+    score_band_1_6: Optional[float] = None
+    estimated_score_30: Optional[int] = None
     grammar_total: int
     strengths: list[str]
     weaknesses: list[str]

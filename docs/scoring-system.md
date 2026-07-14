@@ -1,12 +1,14 @@
-# 채점 시스템 문서 (v2.0.0)
+# 채점 시스템 문서 (v3.0.0)
 
 ## 개요
 이 앱은 2026 개정 TOEFL Writing 연습용 채점기다. 지원 유형:
 - Write an Email (`email`)
 - Writing for an Academic Discussion (`academic_discussion`)
 
-점수는 **연습용 추정치**이며 ETS 공식 점수가 아니다. 30점 환산과 섹션별 범위 표시는
-공식 변환표가 아닌 참고용 추정으로, UI에 "참고용"으로 명시된다.
+점수는 **연습용 추정치**이며 ETS 공식 점수가 아니다. 화면은 한 Email 또는
+Academic Discussion의 0–5 과제 점수만 표시한다. Build a Sentence를 포함한
+세 과제 결과가 없으므로 단일 답안을 1–6 Writing 섹션 밴드나 30점 척도로
+직접 환산하지 않는다.
 
 ## 아키텍처
 ```
@@ -17,19 +19,20 @@ app/main.py      — 입력 검증 → 채점 → prompt-fit 감점 → 파생 �
 app/scorer.py    — 6개 평가 차원 결정론적 채점 (SCORING_ENGINE_VERSION)
 app/grammar.py   — 문법 신호 분석 단일 모듈 (GRAMMAR_RULES_VERSION)
 app/advanced.py  — 첨삭·추천·대시보드 등 파생 분석 (grammar는 app/grammar.py에 위임)
-app/ai_mode.py   — 선택적 LLM 보강 (패러프레이즈/드릴/샘플 문단만, 점수 미개입)
-app/toefl_2026_grader.py — 선택적 LLM 단일 과제 0–5 strict-JSON 계약·스키마 검증
+app/ai_mode.py   — 선택적 로컬/AI 첨삭 보강
+app/toefl_2026_grader.py — LLM 단일 과제 0–5 strict-JSON 계약·스키마 검증
+app/operational_grader.py — OpenAI/Claude/Gemini 운영 채점 브릿지·실패 시 내장 대체
 app/db.py        — SQLite 로컬 저장 (data/submissions.db)
 ```
 
 ## 평가 파이프라인 순서 (중요)
 1. 입력 검증 (60단어 미만 → 400, 분석 이전에 차단)
 2. 유형 감지 또는 명시 유형 사용
-3. `score_essay` — 6차원 결정론적 채점
-4. prompt-fit 감점 적용 (**모든 파생 계산 이전** — 표시 점수와 파생 수치 일치 보장)
-5. 피드백/첨삭/시뮬레이터/프로젝션 등 파생 분석
-6. 선택적 AI 보강 (점수 불변)
-7. 엔진 버전 스탬프와 함께 저장
+3. `score_essay` — 오프라인 대체용 6차원 결정론적 채점
+4. 클라우드 AI가 명시적으로 켜져 있으면 2026 루브릭 구조화 채점 요청
+5. AI JSON·차원 키·분량·인용 근거·상한 규칙 검증. 성공 시 AI 0–5 점수를 사용하고 실패 시 내장 점수 사용
+6. 선택된 하나의 점수를 기준으로 피드백/첨삭/시뮬레이터 등 파생 분석
+7. `score_source`, 대체 사유, provider/model/prompt 버전과 함께 저장
 
 ## 버전 관리
 모든 평가 결과에 다음이 기록된다 (`result.engine`):
@@ -88,8 +91,11 @@ collocation(관용 결합, 예: make a decision). 이 네 항목은 정규식 �
 
 ## 캘리브레이션 상태
 - 전역 감점 `strict_penalty` 기본 0.55 (v1의 1.35는 오탐 노이즈 보정값이라 폐기)
-- **전문가 채점 데이터 대비 정확도(MAE, kappa 등)는 현재 측정 불가** — 전문가
-  골드 데이터가 없다. 데이터 확보 전까지 절대 정확도를 주장하지 않는다.
+- 전문가 만점 답안 2개에서 확인한 추상적 구조만 보수적으로 반영했다: Email의
+  완전한 목적·복수 요청·정중성·형식, Discussion의 독립 근거·복수 의견 연결·반론
+  응답·구체적 예시. 원문은 저장소에 포함하지 않았다.
+- 이 두 샘플만으로 MAE·kappa 같은 절대 정확도를 주장하지 않는다. 더 많은 전문가 골드
+  데이터를 validation/locked-test로 확보해야 한다.
 
 ## 평가 하네스
 ```
@@ -113,4 +119,4 @@ collocation(관용 결합, 예: make a decision). 이 네 항목은 정규식 �
 - 휴리스틱 엔진은 의미·논리 품질을 깊게 평가하지 못한다 (표면 신호 기반)
 - Build a Sentence 유형 미지원 (공식 문항 데이터 확보 후 결정론적 엔진으로 추가 예정)
 - 전문가 채점 데이터 부재 → 캘리브레이션·정확도 검증 불가
-- 30점 환산·섹션 범위는 공식 근거 없는 참고 추정
+- 단일 과제로 Writing 섹션 1–6 밴드를 산출하지 않음

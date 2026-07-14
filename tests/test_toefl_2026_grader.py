@@ -15,6 +15,7 @@ from app.toefl_2026_grader import (
     build_grader_request,
     count_words,
     parse_task_grade,
+    task_grade_json_schema,
 )
 
 
@@ -62,6 +63,14 @@ class TestPromptAndPayload:
         assert "0-5 task scale" in system
         assert "Never convert this single task score to a 1-6 band" in system
         assert "verb_as_subject" in system
+        assert "Do not deduct solely for exceeding the target" in system
+        assert "conventional Email greeting/sign-off" in system
+
+    def test_structured_output_schema_has_exact_task_dimensions(self):
+        schema = task_grade_json_schema("academic_discussion")
+        dimensions = schema["properties"]["dimensions"]
+        assert set(dimensions["properties"]) == set(ACADEMIC_DISCUSSION_DIMENSIONS)
+        assert dimensions["additionalProperties"] is False
 
     def test_empty_prompt_points_are_rejected(self):
         with pytest.raises(ValueError, match="prompt_bullets"):

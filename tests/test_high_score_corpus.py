@@ -89,5 +89,5 @@ def test_github_pages_webapp_is_relative_and_private():
     assert "fetch(" not in javascript
     assert "서버 전송 없음" in html
     assert "service-worker.js" in javascript
-    assert "function halfBand" in javascript
-    assert "band:halfBand(raw+1)" in javascript
+    assert "taskScore:half(raw)" in javascript
+    assert "/ 5.0 예상 과제 점수" in html

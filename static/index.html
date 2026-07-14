@@ -23,7 +23,7 @@
         </li>
         <li>
           <strong>모든 기록은 이 기기에만 저장돼요</strong>
-          <p>답안과 점수 기록은 외부로 전송되지 않아요. 설정에서 언제든 백업하고 복원할 수 있어요.</p>
+          <p>기록은 이 기기에 저장돼요. 클라우드 AI를 직접 켜면 채점할 답안과 문제만 선택한 공급자에게 전송돼요.</p>
         </li>
       </ol>
       <div class="onboarding-actions">
@@ -69,8 +69,8 @@
 
       <div class="input-footer">
         <div class="control-group">
-          <label class="inline-label">목표 밴드
-            <input id="targetScore" type="number" min="1" max="6" step="0.5" value="5.0" />
+          <label class="inline-label">목표 과제 점수
+            <input id="targetScore" type="number" min="0" max="5" step="1" value="5" />
           </label>
           <label class="inline-label">타이머(분)
             <input id="timerMinutes" type="number" min="5" max="60" step="5" value="30" />
@@ -112,11 +112,11 @@
             </svg>
             <div class="score-ring-text">
               <span id="score05">-</span>
-              <small>밴드</small>
+              <small>/ 5 과제</small>
             </div>
           </div>
           <div class="score-hero-info">
-            <p class="score-label">예상 밴드 범위 (1–6) <span id="taskTag" class="task-tag"></span></p>
+            <p class="score-label">예상 과제 점수 (0–5) <span id="taskTag" class="task-tag"></span></p>
             <p class="score-summary" id="summaryKo"></p>
             <div class="score-meta">
               <span class="meta-chip">신뢰도 <strong id="confidence">-</strong></span>
@@ -124,13 +124,14 @@
               <span class="meta-chip" id="grammarCapChip" hidden>문법 상한 <strong id="grammarCapBadge">-</strong></span>
             </div>
             <p id="confidenceReason" class="muted small"></p>
+            <p id="scoreSourceDetail" class="muted small"></p>
             <p id="grammarCapReason" class="muted small"></p>
           </div>
         </div>
         <div class="score-secondary">
-          <div class="score-secondary-item"><span class="ss-key">30점 환산 <em>참고용</em></span><span id="score30" class="ss-val">-</span></div>
-          <div class="score-secondary-item"><span class="ss-key">Writing 범위 <em>참고용</em></span><span id="writingRange" class="ss-val">-</span></div>
-          <div class="score-secondary-item"><span class="ss-key">Total 범위 <em>참고용</em></span><span id="totalRange" class="ss-val">-</span></div>
+          <div class="score-secondary-item"><span class="ss-key">과제 점수 척도</span><span id="score30" class="ss-val">0–5</span></div>
+          <div class="score-secondary-item"><span class="ss-key">Writing 섹션 밴드</span><span id="writingRange" class="ss-val">산출 안 함</span></div>
+          <div class="score-secondary-item"><span class="ss-key">점수 출처</span><span id="totalRange" class="ss-val">-</span></div>
         </div>
         <p class="disclaimer">이 점수는 공개 기준을 참고한 <strong>연습용 추정치</strong>예요. 실제 시험 점수와 다를 수 있어요.</p>
         <details class="engine-details">
@@ -238,7 +239,7 @@
           <h3 class="sub-title">고득점 샘플 문단 <span class="optional-tag">학습용 예시 — 정답이 아니에요</span></h3>
           <p id="sampleParagraph" class="serif-text"></p>
           <h3 class="sub-title">샘플 답안 비교</h3>
-          <p class="muted small">유사도(6.0 기준) <strong id="sampleOverlap">-</strong> / 6.0</p>
+          <p class="muted small">유사도(5.0 기준) <strong id="sampleOverlap">-</strong> / 5.0</p>
           <p class="kv"><span class="kv-key">포함</span><span id="sampleMatched">-</span></p>
           <p class="kv"><span class="kv-key">누락</span><span id="sampleMissing">-</span></p>
           <h3 class="sub-title">템플릿 코치</h3>
@@ -262,7 +263,7 @@
           <div id="smartRecommendations" class="edits"></div>
           <h3 class="sub-title">목표 도달 예상</h3>
           <div id="targetEta" class="edits"></div>
-          <h3 class="sub-title">목표 밴드 전략</h3>
+          <h3 class="sub-title">목표 과제 점수 전략</h3>
           <div id="targetBandStrategy" class="edits"></div>
           <h3 class="sub-title">문장 다양성</h3>
           <div id="sentenceVariety" class="edits"></div>
@@ -291,7 +292,7 @@
       </div>
       <div class="dash-grid">
         <div class="dash-cell"><p class="dash-num" id="dashAttempt">-</p><p class="dash-label">총 제출</p></div>
-        <div class="dash-cell"><p class="dash-num" id="dashAvgScore">-</p><p class="dash-label">평균 밴드</p></div>
+        <div class="dash-cell"><p class="dash-num" id="dashAvgScore">-</p><p class="dash-label">평균 과제 점수</p></div>
         <div class="dash-cell"><p class="dash-num" id="dashAvgPromptFit">-</p><p class="dash-label">평균 적합성</p></div>
       </div>
       <p class="kv"><span class="kv-key">점수 추이</span><span id="dashTrend">-</span></p>
@@ -376,7 +377,7 @@
             <h2 class="card-title">클라우드 AI 연결</h2>
             <button id="saveAiConfigBtn" class="btn primary sm">저장</button>
           </div>
-          <p class="privacy-notice">기본 분석은 인터넷이 필요 없어요. 클라우드 AI는 사용자가 직접 켠 경우에만 답안이 외부로 전송돼요.</p>
+          <p class="privacy-notice">기본 분석은 인터넷이 필요 없어요. 클라우드 AI를 직접 켜면 2026 루브릭 AI 점수가 운영 화면에 표시되며, 답안이 선택한 공급자에게 전송돼요. 응답 검증에 실패하면 내장 점수로 돌아갑니다.</p>
           <p class="muted small">API 키는 이 기기의 로컬 DB에만 저장돼요.</p>
           <div class="ai-config-grid">
             <label class="inline-label">공급자
@@ -431,7 +432,7 @@
           <span class="muted small" id="statusSummaryLine">기본 분석 모드</span>
         </summary>
         <div class="config-body">
-          <p class="status-highlight">현재 점수는 기본 채점 엔진으로 계산됩니다. AI 분석은 점수에 반영되지 않습니다.</p>
+          <p class="status-highlight">클라우드 AI가 꺼져 있으면 내장 기준 점수를 사용합니다. 직접 켜면 검증된 2026 루브릭 AI 과제 점수를 사용하고, 실패 시 내장 점수로 돌아갑니다.</p>
 
           <h3 class="card-subtitle">분석 모드</h3>
           <div id="analysisModePanel" class="analysis-mode-panel">
@@ -527,7 +528,7 @@
     </section>
 
     <footer class="footer-note">
-      이 앱의 점수는 공개 기준을 참고한 연습용 추정치이며 ETS 공식 점수가 아니에요 · 모든 데이터는 이 기기에만 저장돼요
+      이 앱의 점수는 공개 기준을 참고한 연습용 추정치이며 ETS 공식 점수가 아니에요 · 클라우드 AI를 켤 경우에만 채점 텍스트가 선택한 공급자에게 전송돼요
     </footer>
 
   </main>

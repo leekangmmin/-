@@ -13,9 +13,46 @@ import re
 from dataclasses import dataclass, field
 
 # 규칙 변경 시 반드시 버전을 올리고, 저장된 평가 결과와의 비교에 사용한다.
-GRAMMAR_RULES_VERSION = "2.0.0"
+GRAMMAR_RULES_VERSION = "2.1.0"
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+_EMAIL_SALUTATION_LINE = re.compile(
+    r"^(dear\b.+|hello\b.*|hi\b.*|good (morning|afternoon)\b.*|to whom it may concern)\s*,?$",
+    re.IGNORECASE,
+)
+_EMAIL_SIGNOFF_LINE = re.compile(
+    r"^(sincerely|best regards|kind regards|regards|yours truly|respectfully|best)\s*,?$",
+    re.IGNORECASE,
+)
+
+
+def grammar_analysis_text(essay_text: str, task_type: str | None = None) -> str:
+    """Remove conventional Email paratext that is not a sentence-level error.
+
+    Salutations, sign-offs, and the short signature line after a sign-off are
+    normal Email conventions. Treating them as fragments or missing terminal
+    punctuation creates false grammar penalties.
+    """
+    if task_type != "email":
+        return essay_text
+
+    kept: list[str] = []
+    signoff_seen = False
+    for raw_line in essay_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            kept.append("")
+            continue
+        if not any(part.strip() for part in kept) and _EMAIL_SALUTATION_LINE.fullmatch(line):
+            continue
+        if _EMAIL_SIGNOFF_LINE.fullmatch(line):
+            signoff_seen = True
+            continue
+        if signoff_seen and len(re.findall(r"[A-Za-z']+", line)) <= 5:
+            continue
+        kept.append(raw_line)
+    return "\n".join(kept).strip()
 
 # 문두에 오면 뒤따르는 "콤마 + 주어" 구조가 정상인 표지들 (종속절/전환어)
 _DEPENDENT_OPENERS = re.compile(
@@ -61,6 +98,7 @@ _COMMON_BASE_VERBS = {
     "agree", "disagree", "think", "believe", "feel", "want", "need", "know",
     "like", "argue", "support", "recommend", "hope", "prefer", "learn", "work",
     "help", "join", "offer", "enjoy", "say", "see", "go", "come", "get", "give",
+    "thank", "look",
     "take", "make", "let", "put", "find", "become", "seem", "mean", "keep",
     "begin", "start", "grow", "improve", "develop", "provide", "allow", "require",
     "spend", "write", "read", "teach", "study", "live", "use", "focus", "depend",
@@ -138,6 +176,12 @@ def find_comma_splices(sentences: list[str]) -> int:
     count = 0
     for s in sentences:
         if _DEPENDENT_OPENERS.match(s):
+            continue
+        if re.search(
+            r";\s*(however|therefore|moreover|furthermore|consequently|nevertheless),",
+            s,
+            re.IGNORECASE,
+        ):
             continue
         if "," not in s:
             continue

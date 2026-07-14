@@ -5,9 +5,12 @@ Write an Email and Academic Discussion. It returns an integer **0-5 task
 score**. It does not estimate the final 1-6 Writing section band; that band
 depends on all three task results, including Build a Sentence.
 
-The deterministic offline scorer remains the only source of the score shown by
-`POST /api/evaluate`. This LLM contract is available for controlled shadow
-evaluation and explicitly enabled provider integrations.
+The deterministic offline scorer is the default and safety fallback. When a
+user explicitly enables OpenAI, Claude, or Gemini and supplies a valid key,
+`POST /api/evaluate` uses a response that passes this contract as the displayed
+0-5 task score. Provider, parsing, schema, or semantic-validation failures fall
+back to the offline score and expose `score_source="heuristic_fallback"` plus a
+user-facing reason.
 
 ## Safety and validation
 
@@ -22,6 +25,13 @@ evaluation and explicitly enabled provider integrations.
   meaning-impeding error count.
 - Markdown-wrapped or prose-prefixed JSON is rejected. JSON parsing gets one
   retry, and a schema failure gets one corrective re-request.
+- OpenAI uses the Responses API with strict `text.format` JSON Schema; Gemini
+  uses `responseJsonSchema`; Claude uses strict JSON plus the same code-level
+  validation.
+- Word-count ranges are advisory. Extra length alone is not a deduction when
+  the response remains relevant, purposeful, controlled, and nearly error-free.
+- Conventional Email openings/closings and prompt-specific Academic Discussion
+  framing are not automatically treated as template abuse.
 
 ## Claude usage
 

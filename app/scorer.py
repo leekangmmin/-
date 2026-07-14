@@ -4,11 +4,11 @@ import re
 from dataclasses import dataclass
 from statistics import mean
 
-from app.grammar import GRAMMAR_RULES_VERSION, GrammarSignals, analyze_grammar
+from app.grammar import GRAMMAR_RULES_VERSION, GrammarSignals, analyze_grammar, grammar_analysis_text
 from app.models import PromptType, ScoreDimension
 
 # 점수 산출 로직 변경 시 버전을 올린다. 평가 결과에 함께 저장되어 재현성을 보장한다.
-SCORING_ENGINE_VERSION = "2.2.0"
+SCORING_ENGINE_VERSION = "2.3.0"
 RUBRIC_VERSION = f"heuristic-6dim-{SCORING_ENGINE_VERSION}+grammar-{GRAMMAR_RULES_VERSION}"
 
 # ── 점수 공식 변경 금지 게이트 ────────────────────────────────────────────
@@ -177,13 +177,13 @@ def analyze_essay(essay_text: str) -> EssayMetrics:
     )
 
 
-def _grammar_risk_profile(essay_text: str) -> GrammarSignals:
+def _grammar_risk_profile(essay_text: str, prompt_type: PromptType | None = None) -> GrammarSignals:
     """공유 문법 모듈에 위임한다 (구현 중복 제거)."""
-    return analyze_grammar(essay_text)
+    return analyze_grammar(grammar_analysis_text(essay_text, prompt_type))
 
 
-def grammar_cap_status(essay_text: str) -> dict[str, float | bool | str]:
-    profile = _grammar_risk_profile(essay_text)
+def grammar_cap_status(essay_text: str, prompt_type: PromptType | None = None) -> dict[str, float | bool | str]:
+    profile = _grammar_risk_profile(essay_text, prompt_type)
     if profile.severe_breakdown:
         return {
             "applied": True,
@@ -204,9 +204,12 @@ def grammar_cap_status(essay_text: str) -> dict[str, float | bool | str]:
 
 
 def _target_word_window(prompt_type: PromptType) -> tuple[int, int]:
+    # 최소치는 전개 부족 위험을 보는 보조 신호다. 상한은 의도적으로 두지
+    # 않는다. 전문가 만점 답안에서도 권장 범위를 넘는, 관련성 높고 잘 통제된
+    # 답안이 확인되었으므로 분량 초과 자체를 감점하지 않는다.
     if prompt_type == "email":
-        return 100, 220
-    return 120, 300
+        return 80, 10_000
+    return 100, 10_000
 
 
 # email greeting / closing patterns for Structure scoring
@@ -289,7 +292,7 @@ def score_essay(essay_text: str, prompt_type: PromptType) -> tuple[list[ScoreDim
 
 def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBreakdown:
     metrics = analyze_essay(essay_text)
-    grammar_profile = _grammar_risk_profile(essay_text)
+    grammar_profile = _grammar_risk_profile(essay_text, prompt_type)
     grammar_risk = grammar_profile.total
     min_words, max_words = _target_word_window(prompt_type)
     sentence_lengths = [len(re.findall(r"[A-Za-z']+", s)) for s in re.split(r"(?<=[.!?])\s+", essay_text.strip()) if s.strip()]
@@ -359,9 +362,6 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
             content += 0.75
         elif metrics.evidence_hits >= 1:
             content += 0.25
-    if metrics.word_count > max_words + 40:
-        content -= 0.25
-
     # ── Coherence (일관성 / 연속성 / 통일성) ─────────────────────────────────
     coherence = 2.0
     flow_hits = metrics.transition_hits
@@ -551,9 +551,33 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
             if core_moves >= 3 and (int(email_signals["detail_hits"]) >= 3 or int(email_signals["detail_sentences"]) >= 4) and int(email_signals["politeness_hits"]) >= 2:
                 calibration_adjustment = 0.35
                 calibration_reason = "상위권 이메일의 목적·구체성·정중성·형식이 함께 충족되어 코퍼스 보정을 적용했습니다."
+                if (
+                    core_moves == 4
+                    and int(email_signals["detail_sentences"]) >= 5
+                    and int(email_signals["politeness_hits"]) >= 3
+                    and grammar_risk == 0
+                ):
+                    calibration_adjustment = 0.45
+                    calibration_reason = "전문가 만점 이메일에서 확인된 완전한 목적·복수 요청·정중성·형식 신호를 보수적으로 반영했습니다."
         elif metrics.position_hits >= 1 and metrics.evidence_hits >= 2 and metrics.transition_hits >= 2:
             calibration_adjustment = 0.35
             calibration_reason = "상위권 토론 답안의 입장·근거·연결 조건이 함께 충족되어 코퍼스 보정을 적용했습니다."
+            named_view_hits = len(
+                re.findall(
+                    r"\b(?:agree|disagree) with [A-Z][a-z]+|\b[A-Z][a-z]+(?:'s|\s+(?:raises?|argues?|points?|notes?))",
+                    essay_text,
+                )
+            )
+            if (
+                metrics.position_hits >= 2
+                and metrics.evidence_hits >= 3
+                and metrics.transition_hits >= 3
+                and metrics.paragraph_count >= 3
+                and named_view_hits >= 2
+                and grammar_risk == 0
+            ):
+                calibration_adjustment = 0.8
+                calibration_reason = "전문가 만점 토론 답안에서 확인된 독립 근거·복수 의견 연결·반론 대응·예시 구조를 보수적으로 반영했습니다."
 
     pre_round_raw_score = (weighted_sum / weight_total) - strict_penalty - (0.1 if repetition_penalty >= 0.5 else 0.0) + calibration_adjustment
     pre_round_raw_score = max(0.0, min(5.0, pre_round_raw_score))
@@ -561,7 +585,7 @@ def score_essay_detailed(essay_text: str, prompt_type: PromptType) -> ScoringBre
 
     # Repeated grammar errors or broken sentence form make >4.5 band difficult.
     # (4.5 band corresponds to 3.5 on the 0-5 internal scale.)
-    cap = grammar_cap_status(essay_text)
+    cap = grammar_cap_status(essay_text, prompt_type)
     cap_applied = bool(cap["applied"])
     if cap_applied:
         total = min(total, float(cap["ceiling_0_5"]))

@@ -1,6 +1,7 @@
 """채점 엔진 테스트 — 순위 보존, 결정론, 상한 캡."""
 
 from app.scorer import RUBRIC_VERSION, SCORING_ENGINE_VERSION, grammar_cap_status, score_essay
+from app.advanced import bilingual_summary
 from tests.fixtures import (
     DISCUSSION_HIGH,
     DISCUSSION_LOW,
@@ -51,6 +52,33 @@ Jordan Lee"""
         _, low = score_essay(DISCUSSION_LOW, "academic_discussion")
         assert low <= 1.5
 
+    def test_expert_calibrated_complete_email_can_reach_five(self):
+        # Synthetic regression fixture: it encodes only abstract moves observed
+        # in expert-reviewed work and contains no supplied model-answer text.
+        synthetic = """Dear Events Coordinator,
+
+I am writing to ask for details about next month's public science lecture. I registered yesterday because the topic connects directly to biology research for my class. However, the confirmation page did not identify the guest speaker or describe the experiments that will be presented. My teacher requires a detailed summary after the visit, so I hope to review the background material in advance.
+
+Could you please send me the lecture outline? In addition, I would be grateful if you could confirm the starting time and let me know whether student visitors may bring a classmate. This information will help me prepare useful questions before the event.
+
+Thank you very much for your time and assistance. I look forward to your reply.
+
+Best regards,
+Taylor"""
+        _, score = score_essay(synthetic, "email")
+        assert score == 5.0
+
+    def test_expert_calibrated_discussion_with_two_views_can_reach_five(self):
+        synthetic = """I firmly believe that high school students gain more from community service projects because older learners can connect practical work with academic knowledge and long-term goals.
+
+I agree with Daniel's point that shared projects teach responsibility. As a result, students learn to divide complex duties and evaluate one another's ideas. In addition, they can practice explaining decisions to people outside their usual classroom.
+
+Maya raises a fair concern that younger children need chances to cooperate. However, older students also face demanding choices about college and employment. For example, a team that designs a neighborhood recycling campaign must research local needs, negotiate a realistic plan, and present measurable results to residents. Therefore, the activity develops both critical thinking and professional communication.
+
+For these reasons, I strongly believe older students receive the greater educational benefit."""
+        _, score = score_essay(synthetic, "academic_discussion")
+        assert score == 5.0
+
 
 class TestDeterminism:
     def test_repeated_scoring_identical(self):
@@ -70,6 +98,12 @@ class TestDeterminism:
                 assert 0.0 <= d.score <= 5.0
 
 
+def test_five_point_summary_does_not_invent_a_weakness():
+    summary = bilingual_summary(5.0, 5.0, [], prompt_fit_evaluated=False)
+    assert "현재의 과제 충족도" in summary["summary_ko"]
+    assert "근거를 더" not in summary["summary_ko"]
+
+
 class TestGrammarCap:
     def test_no_cap_on_clean_essay(self):
         cap = grammar_cap_status(DISCUSSION_HIGH)
@@ -84,4 +118,4 @@ class TestVersioning:
     def test_versions_exist(self):
         assert SCORING_ENGINE_VERSION
         assert RUBRIC_VERSION
-        assert SCORING_ENGINE_VERSION == "2.2.0"
+        assert SCORING_ENGINE_VERSION == "2.3.0"

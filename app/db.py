@@ -111,7 +111,8 @@ def list_recent(limit: int = 20) -> list[dict[str, Any]]:
     for row in rows:
         parsed = json.loads(row["result_json"])
         score_0_5 = float(parsed.get("estimated_score_0_5", 0))
-        score_band = float(parsed.get("score_band_1_6", min(6.0, max(1.0, score_0_5 + 1.0))))
+        raw_band = parsed.get("score_band_1_6")
+        score_band = float(raw_band) if raw_band is not None else None
         items.append(
             {
                 "id": row["id"],
@@ -119,7 +120,7 @@ def list_recent(limit: int = 20) -> list[dict[str, Any]]:
                 "prompt_type": row["prompt_type"],
                 "estimated_score_0_5": score_0_5,
                 "score_band_1_6": score_band,
-                "estimated_score_30": parsed.get("estimated_score_30", 0),
+                "estimated_score_30": parsed.get("estimated_score_30"),
                 "is_legacy": parsed.get("engine") is None,
             }
         )
