@@ -54,6 +54,18 @@ def _record(**result_overrides):
             {"title": "논리 프레임", "why": "흐름 약함", "how_to": "주장-근거-결론", "impact": "+0.2", "confidence": "medium"},
         ],
         "sentence_edits": [{"original": "I think.", "improved": "I argue.", "note": "더 학술적으로"}],
+        "grammar_stats": {"tense": 0, "article": 1, "preposition": 0, "run_on": 0, "subject_verb": 1, "punctuation": 0, "total": 2},
+        "grammar_corrections": [
+            {"sentence": "a internship", "corrected": "an internship", "error_type": "article",
+             "explanation": "모음 앞에서는 an", "severity": "medium"},
+            {"sentence": "it help", "corrected": "it helps", "error_type": "subject_verb",
+             "explanation": "3인칭 단수 -s", "severity": "high"},
+        ],
+        "target_rewrite": {"minimal": "I argue that ...", "aggressive": "I firmly maintain that ..."},
+        "upgraded_sample_paragraph": "A strong sample paragraph for reference.",
+        "smart_recommendations": [
+            {"title": "근거 밀도 강화", "why": "예시 부족", "how_to": "For example 추가", "impact": "+0.2"},
+        ],
         "target_eta": {"message": "문법 우선 전략을 쓰세요."},
         "score_source_detail": "내장 기준 점수를 사용했습니다.",
     }
@@ -68,14 +80,30 @@ class TestRenderer:
         assert data[:4] == b"%PDF"
         assert len(data) > 1000
 
-    def test_report_is_two_pages(self):
+    def test_report_is_four_pages(self):
+        # 1) 한눈에 2) 문법교정 3) 다시쓰기 4) 학습전략 — 핵심 내용을 다 담되 구조화
         pdf = build_report(_record(), 1)
-        assert pdf.page_no() == 2
+        assert pdf.page_no() == 4
 
     def test_does_not_crash_without_font(self):
         # 존재하지 않는 후보만 주면 unicode 폰트 미등록 → ASCII degrade, 크래시 금지
         pdf = build_report(_record(), 1, font_candidates=[])
         assert pdf.unicode_font is None
+        assert bytes(pdf.output())[:4] == b"%PDF"
+
+    def test_core_learning_content_sections_render(self):
+        # 핵심 학습 콘텐츠(문법교정/리라이팅)를 담은 헬퍼들이 크래시 없이 렌더된다
+        from app.pdf_report import (
+            _draw_grammar_corrections,
+            _draw_grammar_distribution,
+            _draw_strategy_cards,
+            _draw_text_block,
+            build_report,
+        )
+        rec = _record()
+        pdf = build_report(rec, 1)
+        # 4페이지 구조가 유지되고 유효한 PDF
+        assert pdf.page_no() == 4
         assert bytes(pdf.output())[:4] == b"%PDF"
 
     def test_empty_data_is_safe(self):

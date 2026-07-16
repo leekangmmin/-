@@ -1,15 +1,21 @@
 """집중형 PDF 리포트 렌더러 (Phase 12).
 
-기존 리포트는 20여 개 섹션을 6페이지에 쏟아내 "무엇을 먼저 봐야 하는지"가
-불분명했다. 이 모듈은 우선순위가 분명한 2페이지 시각 리포트를 만든다.
+기존 리포트는 20여 개 섹션을 6페이지에 순서 없이 쏟아내 "무엇을 먼저 봐야
+하는지"가 불분명했다. 이 모듈은 우선순위가 분명하되 학습에 필요한 핵심
+내용은 모두 담는 4페이지 시각 리포트를 만든다.
 
 - 1페이지 "한눈에": 도넛 점수 게이지 + 한 줄 총평 + **지금 가장 먼저 할 일**
   (가장 크게) + 영역별 점수 막대 + 잘한 점/보완할 점
-- 2페이지 "개선 가이드": 우선순위 액션 카드 + 문장 다듬기 예시 +
-  목표 리라이팅 + 연습 페이스 + 면책 고지
+- 2페이지 "문법 교정": 문법 이슈 분포 차트 + 문장별 상세 교정(원문→교정→이유).
+  학습자에게 가장 중요한 콘텐츠.
+- 3페이지 "다시 쓰기": 문장 다듬기 + 목표 점수 리라이팅(최소/적극 전문) +
+  고득점 샘플 문단
+- 4페이지 "학습 전략": 개선 우선순위 + 스마트 추천 + 연습 페이스 + 면책 고지
 
-색상은 앱 UI(static/styles.css)의 토큰 계열을 따른다. 한글은 unicode 폰트가
-있을 때만 렌더링되며, 없으면 ASCII로 degrade한다(main.py가 폰트를 주입).
+내용이 적으면 각 섹션이 자동으로 앞 페이지로 흘러 빈 페이지가 생기지 않는다
+(fpdf2 auto page break + _ensure_room). 색상은 앱 UI(static/styles.css)의
+토큰 계열을 따른다. 한글은 unicode 폰트가 있을 때만 렌더링되며, 없으면
+ASCII로 degrade한다.
 """
 
 from __future__ import annotations
@@ -58,6 +64,23 @@ DIM_KO = {
     "Example": "근거·예시",
     "Grammar": "문법",
     "Vocabulary": "어휘",
+}
+
+# 문법 오류 유형 영문 → 한글 라벨
+GRAMMAR_KO = {
+    "tense": "시제",
+    "article": "관사 (a/an/the)",
+    "preposition": "전치사",
+    "run_on": "런온 문장",
+    "subject_verb": "주어-동사 일치",
+    "punctuation": "구두점",
+}
+
+# 심각도 → (색, 라벨)
+SEVERITY = {
+    "high": (RED, "높음"),
+    "medium": (AMBER, "보통"),
+    "low": (GREEN, "낮음"),
 }
 
 
@@ -459,6 +482,213 @@ def _draw_sentence_edit(pdf: ReportPDF, edit: dict) -> None:
     pdf.set_y(y + h + 3)
 
 
+def _ensure_room(pdf: ReportPDF, needed: float) -> None:
+    """남은 세로 공간이 부족하면 새 페이지로 넘긴다(푸터 여백 16mm 확보)."""
+    if pdf.get_y() + needed > pdf.h - 16:
+        pdf.add_page()
+
+
+def _section_title_flow(pdf: ReportPDF, text: str, accent: tuple[int, int, int] = PRIMARY) -> None:
+    """페이지 넘김을 고려한 섹션 제목(제목만 남고 내용이 다음 장으로 가는 것 방지)."""
+    _ensure_room(pdf, 24)
+    _section_title(pdf, text, accent)
+
+
+def _draw_grammar_distribution(pdf: ReportPDF, stats: dict) -> None:
+    """문법 이슈 분포 — 유형별 오류 개수 막대."""
+    rows = [(k, int(stats.get(k, 0))) for k in GRAMMAR_KO]
+    total = sum(v for _, v in rows)
+    if total == 0:
+        _section_title_flow(pdf, "문법 이슈 분포", GREEN)
+        left, w = pdf.l_margin, pdf.content_w
+        y = pdf.get_y()
+        pdf.set_fill_color(*GREEN_SOFT)
+        pdf.set_draw_color(*GREEN)
+        pdf.rect(left, y, w, 12, "DF")
+        pdf.set_text_color(*GREEN)
+        pdf._font("B", 10)
+        pdf.set_xy(left + 4, y + 4)
+        pdf.cell(0, 4, pdf._safe("감지된 주요 문법 오류가 없습니다. 아주 좋아요!"))
+        pdf.set_text_color(*INK)
+        pdf.set_y(y + 16)
+        return
+
+    _section_title_flow(pdf, f"문법 이슈 분포 (총 {total}건)", AMBER)
+    left, w = pdf.l_margin, pdf.content_w
+    label_w = 40
+    value_w = 12
+    bar_w = w - label_w - value_w
+    max_val = max(v for _, v in rows) or 1
+    y = pdf.get_y()
+    for key, val in rows:
+        ko = GRAMMAR_KO[key]
+        pdf.set_text_color(*INK if val else INK_MUTED)
+        pdf._font("", 9)
+        pdf.set_xy(left, y + 0.6)
+        pdf.cell(label_w, 5, pdf._safe(ko))
+        track_x = left + label_w
+        pdf.set_fill_color(*BG_SOFT)
+        pdf.rect(track_x, y + 1.2, bar_w, 3.6, "F")
+        if val:
+            pdf.set_fill_color(*AMBER)
+            pdf.rect(track_x, y + 1.2, bar_w * val / max_val, 3.6, "F")
+        pdf.set_text_color(*(AMBER if val else INK_MUTED))
+        pdf._font("B", 9)
+        pdf.set_xy(track_x + bar_w + 1, y + 0.6)
+        pdf.cell(value_w - 1, 5, str(val), align="R")
+        y += 7
+    pdf.set_text_color(*INK)
+    pdf.set_y(y + 3)
+
+
+def _draw_grammar_corrections(pdf: ReportPDF, corrections: Sequence[dict]) -> None:
+    """구체적 문법 교정 — 학습자에게 가장 중요한 콘텐츠. 원문→교정→이유."""
+    picked = [c for c in corrections if str(c.get("sentence", "")).strip()][:8]
+    if not picked:
+        return
+    _section_title_flow(pdf, "문법 교정 — 문장별 상세", RED)
+    left, w = pdf.l_margin, pdf.content_w
+
+    for c in picked:
+        sentence = str(c.get("sentence", ""))
+        corrected = str(c.get("corrected", ""))
+        explanation = str(c.get("explanation", ""))
+        err_type = GRAMMAR_KO.get(str(c.get("error_type", "")), str(c.get("error_type", "")))
+        severity = str(c.get("severity", "medium"))
+        sev_color, sev_label = SEVERITY.get(severity, (AMBER, "보통"))
+
+        pdf._font("", 8.6)
+        s_lines = pdf.multi_cell(w - 22, 4.0, sentence, dry_run=True, output="LINES")
+        c_lines = pdf.multi_cell(w - 22, 4.0, corrected, dry_run=True, output="LINES")
+        e_lines = pdf.multi_cell(w - 10, 3.8, pdf._safe(explanation), dry_run=True, output="LINES") if explanation else []
+        h = 8 + len(s_lines) * 4.0 + 1.5 + len(c_lines) * 4.0 + (len(e_lines) * 3.8 + 2 if explanation else 0) + 4
+        _ensure_room(pdf, h + 2)
+
+        y = pdf.get_y()
+        pdf.set_fill_color(*WHITE)
+        pdf.set_draw_color(*BORDER)
+        pdf.rect(left, y, w, h, "DF")
+        pdf.set_fill_color(*sev_color)
+        pdf.rect(left, y, 3, h, "F")
+
+        # 헤더: 오류 유형 + 심각도 배지
+        pdf.set_text_color(*sev_color)
+        pdf._font("B", 9)
+        pdf.set_xy(left + 6, y + 2.2)
+        pdf.cell(w - 40, 4, pdf._safe(err_type or "문법"))
+        badge_w = 20
+        pdf.set_fill_color(*sev_color)
+        pdf.rect(left + w - badge_w - 4, y + 2, badge_w, 5, "F")
+        pdf.set_text_color(*WHITE)
+        pdf._font("B", 7.5)
+        pdf.set_xy(left + w - badge_w - 4, y + 3)
+        pdf.cell(badge_w, 3, pdf._safe(f"심각도 {sev_label}"), align="C")
+
+        cy = y + 7.5
+        # 원문
+        pdf.set_text_color(*RED)
+        pdf._font("B", 7.5)
+        pdf.set_xy(left + 6, cy)
+        pdf.cell(14, 4, pdf._safe("원문"))
+        pdf.set_text_color(*INK_SUB)
+        pdf._font("", 8.6)
+        pdf.set_xy(left + 20, cy)
+        pdf.multi_cell(w - 26, 4.0, sentence, align="L")
+        cy = pdf.get_y() + 1.5
+        # 교정
+        pdf.set_text_color(*GREEN)
+        pdf._font("B", 7.5)
+        pdf.set_xy(left + 6, cy)
+        pdf.cell(14, 4, pdf._safe("교정"))
+        pdf.set_text_color(*INK)
+        pdf._font("", 8.6)
+        pdf.set_xy(left + 20, cy)
+        pdf.multi_cell(w - 26, 4.0, corrected, align="L")
+        # 이유
+        if explanation:
+            cy = pdf.get_y() + 1
+            pdf.set_text_color(*INK_MUTED)
+            pdf._font("", 8)
+            pdf.set_xy(left + 6, cy)
+            pdf.multi_cell(w - 12, 3.8, pdf._safe("→ " + explanation), align="L")
+
+        pdf.set_text_color(*INK)
+        pdf.set_y(y + h + 2.5)
+
+
+def _draw_text_block(pdf: ReportPDF, label: str, text: str, accent: tuple[int, int, int]) -> None:
+    """리라이팅/샘플 등 긴 본문 블록. 라벨 pill + 테두리 본문."""
+    text = str(text).strip()
+    if not text:
+        return
+    left, w = pdf.l_margin, pdf.content_w
+    pdf._font("", 8.8)
+    lines = pdf.multi_cell(w - 8, 4.4, text, dry_run=True, output="LINES")
+    h = 8 + len(lines) * 4.4 + 3
+    _ensure_room(pdf, h + 2)
+
+    y = pdf.get_y()
+    # 라벨 pill
+    pdf.set_fill_color(*accent)
+    lbl_w = pdf.get_string_width(pdf._safe(label)) + 6
+    pdf.rect(left, y, lbl_w, 5.5, "F")
+    pdf.set_text_color(*WHITE)
+    pdf._font("B", 8)
+    pdf.set_xy(left, y + 1.2)
+    pdf.cell(lbl_w, 3.2, pdf._safe(label), align="C")
+
+    by = y + 7
+    pdf.set_fill_color(*BG_SOFT)
+    pdf.set_draw_color(*BORDER)
+    body_h = len(lines) * 4.4 + 4
+    pdf.rect(left, by, w, body_h, "DF")
+    pdf.set_text_color(*INK)
+    pdf._font("", 8.8)
+    pdf.set_xy(left + 4, by + 2)
+    pdf.multi_cell(w - 8, 4.4, text, align="L")
+    pdf.set_y(by + body_h + 3)
+
+
+def _draw_strategy_cards(pdf: ReportPDF, recs: Sequence[dict]) -> None:
+    """학습 전략 — 스마트 추천(제목·왜·어떻게)."""
+    picked = [r for r in recs if str(r.get("title", "")).strip()][:4]
+    if not picked:
+        return
+    _section_title_flow(pdf, "학습 전략", PRIMARY)
+    left, w = pdf.l_margin, pdf.content_w
+    for r in picked:
+        title = str(r.get("title", ""))
+        why = str(r.get("why", ""))
+        how = str(r.get("how_to", ""))
+        impact = str(r.get("impact", ""))
+        pdf._font("", 8.6)
+        body = " ".join(x for x in [f"왜: {why}" if why else "", f"방법: {how}" if how else ""] if x)
+        b_lines = pdf.multi_cell(w - 12, 4.0, pdf._safe(body), dry_run=True, output="LINES")
+        h = 8 + len(b_lines) * 4.0 + 3
+        _ensure_room(pdf, h + 2)
+        y = pdf.get_y()
+        pdf.set_fill_color(*WHITE)
+        pdf.set_draw_color(*BORDER)
+        pdf.rect(left, y, w, h, "DF")
+        pdf.set_fill_color(*PRIMARY)
+        pdf.rect(left, y, 3, h, "F")
+        pdf.set_text_color(*PRIMARY_DARK)
+        pdf._font("B", 9.5)
+        pdf.set_xy(left + 6, y + 2.2)
+        pdf.cell(w - 40, 5, pdf._safe(title))
+        if impact:
+            pdf.set_text_color(*INK_MUTED)
+            pdf._font("", 8)
+            pdf.set_xy(left + w - 34, y + 2.6)
+            pdf.cell(30, 4, pdf._safe(f"기대 {impact}"), align="R")
+        pdf.set_text_color(*INK_SUB)
+        pdf._font("", 8.6)
+        pdf.set_xy(left + 6, y + 8)
+        pdf.multi_cell(w - 12, 4.0, pdf._safe(body), align="L")
+        pdf.set_text_color(*INK)
+        pdf.set_y(y + h + 2.5)
+
+
 def _draw_disclaimer(pdf: ReportPDF, score_source_detail: str) -> None:
     left, w = pdf.l_margin, pdf.content_w
     if pdf.get_y() + 22 > pdf.h - 16:
@@ -534,23 +764,47 @@ def build_report(
     _draw_dimension_bars(pdf, result.get("dimensions", []))
     _draw_two_columns(pdf, result.get("strengths", []), result.get("weaknesses", []))
 
-    # ── 2페이지 ─────────────────────────────────────────────────────
+    # ── 2페이지: 문법 교정 (학습자에게 가장 중요한 콘텐츠) ──────────
+    pdf.add_page()
+    _draw_grammar_distribution(pdf, result.get("grammar_stats", {}) or {})
+    _draw_grammar_corrections(pdf, result.get("grammar_corrections", []) or [])
+
+    # ── 3페이지: 다시 쓰기 (문장 다듬기 + 목표 리라이팅 + 고득점 샘플) ─
+    pdf.add_page()
+    sentence_edits = result.get("sentence_edits", []) or []
+    if sentence_edits:
+        _section_title_flow(pdf, "문장 다듬기", GREEN)
+        for edit in sentence_edits[:4]:
+            _draw_sentence_edit(pdf, edit)
+
+    target_rewrite = result.get("target_rewrite", {}) or {}
+    minimal = str(target_rewrite.get("minimal", "")).strip()
+    aggressive = str(target_rewrite.get("aggressive", "")).strip()
+    if minimal or aggressive:
+        _section_title_flow(pdf, "목표 점수 리라이팅", PRIMARY)
+        if minimal:
+            _draw_text_block(pdf, "최소 수정 — 내 문장 유지", minimal, PRIMARY)
+        if aggressive:
+            _draw_text_block(pdf, "적극 수정 — 표현 업그레이드", aggressive, PRIMARY_DARK)
+
+    upgraded = str(result.get("upgraded_sample_paragraph", "")).strip()
+    if upgraded:
+        _section_title_flow(pdf, "고득점 샘플 문단 (학습용 예시)", GREEN)
+        _draw_text_block(pdf, "샘플", upgraded, GREEN)
+
+    # ── 4페이지: 학습 전략 + 개선 우선순위 + 연습 페이스 ─────────────
     pdf.add_page()
     if len(actions) > 1:
-        _section_title(pdf, "개선 우선순위", PRIMARY)
+        _section_title_flow(pdf, "개선 우선순위", PRIMARY)
         for i, action in enumerate(actions[1:4], start=2):
             _draw_action_card(pdf, i, action)
 
-    sentence_edits = result.get("sentence_edits", []) or []
-    if sentence_edits:
-        _section_title(pdf, "문장 다듬기 예시", GREEN)
-        for edit in sentence_edits[:3]:
-            _draw_sentence_edit(pdf, edit)
+    _draw_strategy_cards(pdf, result.get("smart_recommendations", []) or [])
 
     target_eta = result.get("target_eta", {}) or {}
     eta_msg = str(target_eta.get("message", "")).strip()
     if eta_msg:
-        _section_title(pdf, "연습 페이스", AMBER)
+        _section_title_flow(pdf, "연습 페이스", AMBER)
         left, w = pdf.l_margin, pdf.content_w
         y = pdf.get_y()
         pdf._font("", 9)
