@@ -229,6 +229,13 @@ def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    # 브라우저가 자동 요청하는 /favicon.ico를 앱 아이콘(logo.png)으로 응답해
+    # 매 요청마다 404가 로그에 남지 않게 한다.
+    return FileResponse(STATIC_DIR / "logo.png", media_type="image/png")
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     from app.shadow_config import load_shadow_config
