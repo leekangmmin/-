@@ -123,6 +123,16 @@ def main() -> int:
 
     try:
         url = f"http://127.0.0.1:{managed.port}"
+
+        # 헤드리스 모드: 창을 열지 않고 서버만 유지한다. CI 러너나 패키징
+        # 스모크 테스트처럼 디스플레이가 없는 환경에서 서버·데이터·종료
+        # 동작만 검증할 때 쓴다. 종료는 SIGTERM/SIGINT 핸들러가 담당한다.
+        if os.getenv("TOEFL_NO_WINDOW", "").strip() == "1":
+            print(f"[headless] 창 없이 서버만 실행합니다: {url}", file=sys.stderr)
+            import threading
+            threading.Event().wait()  # 신호로 os._exit 될 때까지 대기
+            return 0
+
         try:
             import webview  # 지연 import — 서버만 검증하는 테스트에서 pywebview 의존성을 피하기 위함
 

@@ -93,6 +93,7 @@ def _http_json(url: str, method: str = "GET", payload: dict | None = None, timeo
 def _launch(executable: Path, data_dir: Path) -> subprocess.Popen:
     env = dict(os.environ)
     env["TOEFL_DATA_DIR"] = str(data_dir)
+    env["TOEFL_NO_WINDOW"] = "1"  # 헤드리스 — 창 없이 서버만 (CI 안정성)
     env.pop("ANTHROPIC_API_KEY", None)
     return subprocess.Popen([str(executable)], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 

@@ -66,6 +66,9 @@ def _wait_for_lock(lock_path: Path, timeout: float = 20.0) -> dict:
 def _launch(executable: Path, data_dir: Path) -> subprocess.Popen:
     env = dict(os.environ)
     env["TOEFL_DATA_DIR"] = str(data_dir)
+    # 헤드리스로 실행 — 서버·데이터·종료만 검증한다. 네이티브 창은 수동 검증
+    # 대상이며, 이 플래그로 CI 러너(디스플레이 없음)에서도 안정적으로 돈다.
+    env["TOEFL_NO_WINDOW"] = "1"
     env.pop("TOEFL_ADMIN_API_ENABLED", None)
     env.pop("ANTHROPIC_API_KEY", None)
     return subprocess.Popen([str(executable)], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -105,8 +108,11 @@ def run_smoke_test(app_bundle: Path) -> None:
             assert status == 200, f"evaluate status={status} body={body}"
             submission_id = body["submission_id"]
             result = body["result"]
-            assert 1.0 <= result["score_band_1_6"] <= 6.0
-            print(f"    OK: submission_id={submission_id}, score_band_1_6={result['score_band_1_6']}")
+            # 단일 과제 점수는 0-5 스케일. 밴드(1-6)/30점 환산은 제품 방침상
+            # 단일 과제로 산출하지 않으므로 None이다(지어내지 않는다).
+            task_score = result["estimated_score_0_5"]
+            assert 0.0 <= task_score <= 5.0, f"task score out of range: {task_score}"
+            print(f"    OK: submission_id={submission_id}, estimated_score_0_5={task_score}")
 
             print("[3/6] 기록 / 대시보드 / PDF")
             status, history = _http_json(f"http://127.0.0.1:{port}/api/history")
