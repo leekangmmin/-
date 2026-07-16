@@ -56,8 +56,8 @@
 | Docker self-host | ✅ | 전체 웹 기능 사용 가능 |
 | 로컬 AI | 선택 | Ollama/llama.cpp 확장 경로, 첨삭 보강용 |
 | 클라우드 AI | 선택·기본 꺼짐 | 직접 활성화하면 검증된 2026 루브릭 과제 점수를 운영 화면에 사용 |
-| macOS 앱 | 내부 RC | 서명·공증 전, Gatekeeper 경고 가능 |
-| Windows 네이티브 앱 | 미검증 | 빌드 스크립트만 준비, 공개 릴리스 없음 |
+| macOS 앱(.app/DMG) | 내부 RC | 서명·공증 전, Gatekeeper 경고 가능 |
+| Windows 앱(.exe/설치본) | CI 빌드 · 런타임 미검증 | windows-latest에서 실제 빌드, 물리 Windows 실행은 미확인 |
 | ETS 공식 채점 | 해당 없음 | 비공식 연습용 예상치 |
 
 ### 어떤 버전을 사용해야 하나요?
