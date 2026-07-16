@@ -1,0 +1,102 @@
+name: build-desktop
+
+# 데스크톱 설치 패키지를 실제 OS 러너에서 빌드한다.
+#  - Windows(.exe + Inno Setup 인스톨러): windows-latest 러너
+#  - macOS(.app zip + DMG): macos-latest 러너
+# 버전 태그(v*) 푸시 또는 수동 실행 시 동작하며, 산출물을 아티팩트로 올린다.
+# 태그 빌드는 GitHub Release에도 첨부한다.
+#
+# 정직성: CI가 각 OS에서 실제로 빌드하지만, 물리 Windows 데스크톱에서 창이
+# 정상적으로 뜨는지(pywebview WebView2 런타임)는 이 워크플로로 검증되지 않는다.
+# 서명·공증은 인증서가 없어 수행하지 않는다(unsigned) — README/릴리스에 명시.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build Windows .exe
+        shell: pwsh
+        run: .\windows\build_windows.ps1
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Read app version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = python -c "from app.version import APP_VERSION; print(APP_VERSION)"
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=${{ steps.ver.outputs.version }}" `
+            "windows\installer\TOEFLScorer.iss"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist_windows/*.exe
+            dist_windows/installer/*.exe
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist_windows/*.exe
+            dist_windows/installer/*.exe
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build macOS .app (tests + icon + PyInstaller + scan + smoke + manifest)
+        run: |
+          chmod +x scripts/build_macos.sh scripts/make_dmg.sh
+          ./scripts/build_macos.sh
+
+      - name: Build DMG
+        run: ./scripts/make_dmg.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/release-manifest.json
+            dist/checksums.txt
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.zip
+            dist/checksums.txt

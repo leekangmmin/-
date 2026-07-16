@@ -16,6 +16,7 @@ Pillow만 사용한다(이미 fpdf2 의존성으로 설치돼 있음).
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -112,15 +113,28 @@ def main() -> int:
         master.resize((size, size), Image.LANCZOS).save(iconset / name)
     print(f"iconset: {iconset} ({len(ICONSET_SIZES)} sizes)")
 
-    icns = RESOURCES / "app.icns"
-    result = subprocess.run(
-        ["iconutil", "-c", "icns", str(iconset), "-o", str(icns)],
-        capture_output=True, text=True,
+    # Windows .ico (다중 해상도) — Pillow만으로 생성되므로 OS 무관하게 만들 수 있다.
+    ico = RESOURCES / "app.ico"
+    master.save(
+        ico,
+        format="ICO",
+        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
     )
-    if result.returncode != 0:
-        print(f"iconutil 실패: {result.stderr}", file=sys.stderr)
-        return 1
-    print(f"icns: {icns} ({icns.stat().st_size} bytes)")
+    print(f"ico: {ico} ({ico.stat().st_size} bytes)")
+
+    # macOS .icns — iconutil이 있을 때만(비-macOS CI에서는 스킵).
+    icns = RESOURCES / "app.icns"
+    if shutil.which("iconutil"):
+        result = subprocess.run(
+            ["iconutil", "-c", "icns", str(iconset), "-o", str(icns)],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            print(f"iconutil 실패: {result.stderr}", file=sys.stderr)
+            return 1
+        print(f"icns: {icns} ({icns.stat().st_size} bytes)")
+    else:
+        print("iconutil 없음 — .icns 생성 스킵 (비-macOS 환경)")
     return 0
 
 
