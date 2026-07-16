@@ -7,17 +7,20 @@ $ErrorActionPreference = "Stop"
 
 Set-Location -Path (Join-Path $PSScriptRoot "..")
 
-$pythonCmd = $null
-if (Get-Command py -ErrorAction SilentlyContinue) {
-  $pythonCmd = "py"
-} elseif (Get-Command python -ErrorAction SilentlyContinue) {
-  $pythonCmd = "python"
+# PATH의 `python`을 우선한다. CI(actions/setup-python)는 요구 버전(3.11)을
+# `python`으로 노출하는데, `py` 런처는 시스템에 설치된 최신 버전(예: 3.14)을
+# 골라 pydantic-core 등 네이티브 휠 빌드가 실패할 수 있다. `py -3.11`은 최후 수단.
+if (Get-Command python -ErrorAction SilentlyContinue) {
+  $pyExe = "python"; $pyArgs = @()
+} elseif (Get-Command py -ErrorAction SilentlyContinue) {
+  $pyExe = "py"; $pyArgs = @("-3.11")
 } else {
   throw "Python 실행 파일을 찾지 못했습니다. Python 3.11+ 설치 후 다시 시도하세요."
 }
 
+& $pyExe @pyArgs --version
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
-  & $pythonCmd -m venv .venv
+  & $pyExe @pyArgs -m venv .venv
 }
 
 & .\.venv\Scripts\python.exe -m pip install --upgrade pip

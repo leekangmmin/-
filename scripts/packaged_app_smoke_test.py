@@ -135,9 +135,13 @@ def run_smoke_test(app_bundle: Path) -> None:
             print("[3.5/6] 로컬 AI 상태 — 모델 없이 정상 응답")
             status, local_ai_status = _http_json(f"http://127.0.0.1:{port}/api/local-ai/status")
             assert status == 200, f"local-ai/status status={status}"
-            assert local_ai_status.get("offline_core", {}).get("available") is True, "offline_core must be available"
-            local_ai_avail = local_ai_status.get("local_ai", {}).get("available", False)
-            local_ai_provider = local_ai_status.get("local_ai", {}).get("model", {}).get("provider_id", "")
+            # 응답 필드가 None일 수 있으므로(로컬 AI 모델 미설치 환경) 방어적으로 접근한다.
+            offline_core = local_ai_status.get("offline_core") or {}
+            assert offline_core.get("available") is True, "offline_core must be available"
+            local_ai = local_ai_status.get("local_ai") or {}
+            local_ai_avail = local_ai.get("available", False)
+            local_ai_model = local_ai.get("model") or {}
+            local_ai_provider = local_ai_model.get("provider_id", "")
             print(f"    OK: /api/local-ai/status → offline_core_available=True, local_ai_available={local_ai_avail}, provider={local_ai_provider}")
             # Only run test endpoint when no heavy LLM is connected (avoids 50-80s wait)
             if local_ai_provider not in ("ollama", "llamacpp"):
