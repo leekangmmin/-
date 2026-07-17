@@ -65,6 +65,8 @@ class TestPromptAndPayload:
         assert "verb_as_subject" in system
         assert "Do not deduct solely for exceeding the target" in system
         assert "conventional Email greeting/sign-off" in system
+        assert "Referring to a classmate" in system
+        assert "it is optional" in system
 
     def test_structured_output_schema_has_exact_task_dimensions(self):
         schema = task_grade_json_schema("academic_discussion")
@@ -131,17 +133,17 @@ class TestStrictResultValidation:
                 essay_text=ESSAY,
             )
 
-    def test_missed_point_requires_cap_and_prevents_five(self):
+    def test_missed_point_does_not_create_a_mechanical_cap(self):
         payload = _valid_grade()
         payload["required_points"]["missed"] = ["respond to Alex"]
         payload["overall_score"] = 5
 
-        with pytest.raises(ValueError, match="missing_required_point"):
-            parse_task_grade(
-                payload,
-                expected_task_type="academic_discussion",
-                essay_text=ESSAY,
-            )
+        result = parse_task_grade(
+            payload,
+            expected_task_type="academic_discussion",
+            essay_text=ESSAY,
+        )
+        assert result.overall_score == 5
 
     def test_hallucinated_error_excerpt_is_rejected(self):
         payload = _valid_grade()

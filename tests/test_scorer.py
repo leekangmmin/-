@@ -50,7 +50,7 @@ Jordan Lee"""
 
     def test_low_quality_stays_low(self):
         _, low = score_essay(DISCUSSION_LOW, "academic_discussion")
-        assert low <= 1.5
+        assert low <= 2.0
 
     def test_expert_calibrated_complete_email_can_reach_five(self):
         # Synthetic regression fixture: it encodes only abstract moves observed
@@ -78,6 +78,28 @@ Maya raises a fair concern that younger children need chances to cooperate. Howe
 For these reasons, I strongly believe older students receive the greater educational benefit."""
         _, score = score_essay(synthetic, "academic_discussion")
         assert score == 5.0
+
+    def test_strong_single_paragraph_discussion_is_not_format_penalized(self):
+        response = """As the study of written works is one of the fundamental aspects of modern education, the question of whether educators should prioritize literature or non-fiction in their curricula has placed them at a critical crossroads. Although some people claim that fiction is valuable for students, I firmly believe that non-fiction is more valuable than fiction.
+I strongly agree with Andrew's point that students must be able to evaluate information to understand local and world events and become good citizens. This is critical because, since the advent of the digital era, students' literacy skills have noticeably deteriorated. Non-fiction directly trains the ability to analyze real-world information, which is an essential life skill. For example, a student who regularly reads news articles and reports learns to distinguish reliable sources from misinformation — a skill fiction alone cannot build.
+While Claire raises a valid concern that literature helps individuals understand all sorts of written material, she overlooks the fact that non-fiction serves as a cornerstone for building comprehension across a diverse array of texts.
+For these reasons, I believe that schools should give greater emphasis to non-fiction in their curricula."""
+        _, single_newlines = score_essay(response, "academic_discussion")
+        _, blank_lines = score_essay(
+            response.replace("\n", "\n\n"), "academic_discussion"
+        )
+        assert single_newlines == blank_lines
+        assert single_newlines >= 4.0
+
+    def test_long_controlled_sentence_is_not_a_grammar_error(self):
+        sentence = (
+            "Although educators face a difficult decision when designing a modern "
+            "curriculum, students who regularly examine reports, historical documents, "
+            "and carefully sourced articles can develop the critical habits that help "
+            "them distinguish reliable evidence from unsupported claims in public debate."
+        )
+        cap = grammar_cap_status(sentence, "academic_discussion")
+        assert cap["applied"] is False
 
 
 class TestDeterminism:
@@ -118,4 +140,4 @@ class TestVersioning:
     def test_versions_exist(self):
         assert SCORING_ENGINE_VERSION
         assert RUBRIC_VERSION
-        assert SCORING_ENGINE_VERSION == "2.3.0"
+        assert SCORING_ENGINE_VERSION == "3.0.0"

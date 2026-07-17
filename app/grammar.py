@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 
 # 규칙 변경 시 반드시 버전을 올리고, 저장된 평가 결과와의 비교에 사용한다.
-GRAMMAR_RULES_VERSION = "2.1.0"
+GRAMMAR_RULES_VERSION = "3.0.0"
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
@@ -301,8 +301,11 @@ def analyze_grammar(essay_text: str) -> GrammarSignals:
     sig.subject_verb += len(re.findall(r"\b(he|she|it)\s+don't\b|\b(i|we|they)\s+doesn't\b", lowered))
 
     # ── run-on / comma splice ───────────────────────────────────────────
-    # 35단어 이상 단문(접속사 나열)은 가독성/문법 위험이 커진다는 기존 제품 기준과 일치.
-    sig.run_on += sum(len(re.findall(r"[A-Za-z']+", s)) > 35 for s in sentences)
+    # 문장 길이는 문법 오류가 아니다. 종속절·관계절이 적절히 통제된 긴 문장을
+    # 단어 수만으로 run-on으로 판정하면 상급 답안을 오히려 감점하게 된다.
+    # 결정론적 로컬 엔진은 근거가 분명한 comma splice만 집계하고, 의미 기반의
+    # fused-sentence 판단은 루브릭 LLM 경로에 맡긴다.
+    sig.run_on = 0
     sig.comma_splice += find_comma_splices(sentences)
 
     # ── 문장부호 ────────────────────────────────────────────────────────

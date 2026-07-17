@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 # Academic Word List (AWL) – Coxhead (2000) core subset
-_AWL: set[str] = {
+ACADEMIC_WORDS: set[str] = {
     "abandon", "abstract", "access", "accompany", "accumulate", "accurate",
     "achieve", "acquire", "adapt", "adequate", "adjacent", "adjust",
     "administer", "adult", "affect", "aggregate", "aid", "alter",
@@ -55,6 +55,9 @@ _AWL: set[str] = {
     "suggest", "support", "survey", "sustain", "traditional", "understand",
 }
 
+# Backward-compatible alias for older imports.
+_AWL = ACADEMIC_WORDS
+
 # Academic collocations and transition phrases
 _COLLOCATIONS: list[str] = [
     "in contrast", "on the other hand", "as a result", "in addition",
@@ -70,54 +73,34 @@ _COLLOCATIONS: list[str] = [
 ]
 
 
+def _mattr(tokens: list[str], window: int = 50) -> float:
+    if not tokens:
+        return 0.0
+    if len(tokens) <= window:
+        return len(set(tokens)) / len(tokens)
+    values = [
+        len(set(tokens[start : start + window])) / window
+        for start in range(len(tokens) - window + 1)
+    ]
+    return sum(values) / len(values)
+
+
+def _base_form(token: str) -> str:
+    for suffix in ("ing", "ed", "es", "s"):
+        if token.endswith(suffix) and len(token) - len(suffix) >= 4:
+            return token[: -len(suffix)]
+    return token
+
+
 def analyze_vocabulary(text: str) -> dict:
-    """Return vocabulary richness metrics for the given essay text."""
-    try:
-        tokens = re.findall(r"\b[a-zA-Z]{3,}\b", text.lower())
-        if not tokens:
-            return {
-                "total_words": 0,
-                "unique_words": 0,
-                "academic_word_count": 0,
-                "academic_ratio": 0.0,
-                "type_token_ratio": 0.0,
-                "sophistication_score": 0.0,
-                "academic_words_found": [],
-                "collocations_found": [],
-                "suggestions": ["에세이 내용이 없습니다."]
-            }
-        total_words = len(tokens)
-        unique_words = len(set(tokens))
-        academic_words = [w for w in tokens if w in _AWL]
-        academic_word_count = len(academic_words)
-        academic_ratio = academic_word_count / total_words if total_words else 0.0
-        type_token_ratio = unique_words / total_words if total_words else 0.0
-        sophistication_score = academic_ratio * 0.7 + type_token_ratio * 0.3
-        academic_words_found = list(sorted(set(academic_words)))
-        collocations_found = [c for c in _COLLOCATIONS if c in text.lower()]
-        suggestions = []
-        if academic_ratio < 0.10:
-            suggestions.append("학술 어휘 비율이 매우 낮습니다. AWL 단어를 반드시 더 사용하세요. (0.10 미만은 5.0점 이상 불가)")
-        elif academic_ratio < 0.15:
-            suggestions.append("학술 어휘 비율이 부족합니다. AWL 단어를 더 사용하세요.")
-        if type_token_ratio < 0.48:
-            suggestions.append("어휘 다양성이 매우 부족합니다. 반복 단어를 줄이고 동의어를 늘리세요. (0.48 미만은 5.0점 이상 불가)")
-        elif type_token_ratio < 0.55:
-            suggestions.append("어휘 다양성이 부족합니다. 반복 단어를 줄이세요.")
-        if not collocations_found:
-            suggestions.append("학술적 연결어구(collocation)를 더 활용하세요.")
-        return {
-            "total_words": total_words,
-            "unique_words": unique_words,
-            "academic_word_count": academic_word_count,
-            "academic_ratio": round(academic_ratio, 3),
-            "type_token_ratio": round(type_token_ratio, 3),
-            "sophistication_score": round(sophistication_score, 3),
-            "academic_words_found": academic_words_found,
-            "collocations_found": collocations_found,
-            "suggestions": suggestions or ["어휘 수준이 현존 최강수준입니다."]
-        }
-    except Exception as e:
+    """Return descriptive vocabulary metrics without mechanical score caps.
+
+    MATTR is used instead of raw type-token ratio so a longer response is not
+    automatically labeled less diverse. Academic words and discourse phrases
+    are descriptive evidence, not mandatory ingredients.
+    """
+    tokens = re.findall(r"\b[a-zA-Z]+(?:['-][a-zA-Z]+)*\b", text.lower())
+    if not tokens:
         return {
             "total_words": 0,
             "unique_words": 0,
@@ -127,44 +110,47 @@ def analyze_vocabulary(text: str) -> dict:
             "sophistication_score": 0.0,
             "academic_words_found": [],
             "collocations_found": [],
-            "suggestions": [f"어휘 분석 오류: {e}. Python 3.11+ 환경과 최신 requirements.txt를 확인하세요."]
+            "suggestions": ["분석할 영어 답안이 없습니다."],
         }
 
-    unique = set(tokens)
-    academic_found = sorted(w for w in unique if w in _AWL)
-    text_lower = text.lower()
-    collocations_found = [c for c in _COLLOCATIONS if c in text_lower]
-
-    academic_ratio = len(academic_found) / max(len(unique), 1)
-    ttr = len(unique) / max(len(tokens), 1)
-    sophistication = round((academic_ratio * 0.6 + ttr * 0.4) * 100, 1)
+    normalized = [_base_form(token) for token in tokens]
+    academic_tokens = [
+        token for token, base in zip(tokens, normalized) if base in ACADEMIC_WORDS
+    ]
+    academic_ratio = len(academic_tokens) / len(tokens)
+    mattr = _mattr(tokens)
+    long_content_ratio = sum(len(token.replace("-", "")) >= 7 for token in tokens) / len(tokens)
+    sophistication = min(
+        1.0,
+        academic_ratio * 2.5 + mattr * 0.45 + long_content_ratio * 0.35,
+    )
+    collocations_found = [
+        phrase for phrase in _COLLOCATIONS if phrase in text.lower()
+    ]
 
     suggestions: list[str] = []
-    if academic_ratio < 0.15:
+    if mattr < 0.55:
         suggestions.append(
-            "학술 어휘 비율이 낮습니다. analyze, significant, demonstrate, contrast 등 학술 단어를 더 활용하세요."
+            "같은 내용어가 가까운 문장 안에서 반복되는지 확인하고, 의미가 정확할 때만 표현을 바꿔 보세요."
         )
-    if ttr < 0.50:
+    if academic_ratio < 0.05 and long_content_ratio < 0.12:
         suggestions.append(
-            "반복 단어가 많습니다. 유의어 사전(thesaurus)을 활용해 어휘 다양성을 높이세요."
+            "주제에 맞는 구체적 동사와 명사를 사용하면 표현의 정밀도를 높일 수 있습니다."
         )
-    if len(collocations_found) < 3:
+    if not suggestions:
         suggestions.append(
-            "학술 연결어 사용이 부족합니다. furthermore, consequently, in contrast, as a result 등을 문장 흐름에 맞게 추가하세요."
-        )
-    if len(tokens) < 200:
-        suggestions.append(
-            "답안 분량이 짧습니다. 통합형 250단어+, 토론형 150단어+ 작성을 목표로 하세요."
+            "현재 지표에서는 뚜렷한 어휘 반복 문제가 보이지 않습니다. 어려운 단어 수보다 문맥상 정확성을 우선하세요."
         )
 
     return {
         "total_words": len(tokens),
-        "unique_words": len(unique),
-        "academic_word_count": len(academic_found),
+        "unique_words": len(set(tokens)),
+        "academic_word_count": len(academic_tokens),
         "academic_ratio": round(academic_ratio, 3),
-        "type_token_ratio": round(ttr, 3),
-        "sophistication_score": sophistication,
-        "academic_words_found": academic_found[:20],
+        # API 필드명은 하위 호환을 위해 유지하지만 값은 MATTR이다.
+        "type_token_ratio": round(mattr, 3),
+        "sophistication_score": round(sophistication, 3),
+        "academic_words_found": sorted(set(academic_tokens))[:20],
         "collocations_found": collocations_found[:10],
         "suggestions": suggestions,
     }

@@ -30,4 +30,11 @@ def test_dimensions_schema_unchanged_under_injection():
         dims, _ = score_essay(pair.injected_text, "academic_discussion")
         assert len(dims) == 6
         names = {d.name for d in dims}
-        assert names == {"Structure", "Content", "Coherence", "Example", "Grammar", "Vocabulary"}
+        assert names == {
+            "Task Fulfillment",
+            "Elaboration",
+            "Organization",
+            "Syntax Range",
+            "Vocabulary Control",
+            "Language Accuracy",
+        }

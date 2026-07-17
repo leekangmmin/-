@@ -151,8 +151,8 @@ _LLM_DIMENSION_LABELS = {
     "language_use": "문법·어휘·문장 다양성",
     "organization": "논리적 구성",
     "elaboration_relevance": "관련성·구체적 전개",
+    "organization_coherence": "조직·응집성",
     "syntax_vocabulary": "구문·어휘",
-    "discourse_conventions": "토론 참여·의견 연결",
     "language_accuracy": "언어 정확성",
 }
 
@@ -385,14 +385,10 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
         total_score = float(llm_grade.overall_score)
         dimensions = _llm_dimensions(llm_grade)  # type: ignore[assignment]
 
-    # prompt-fit 감점은 파생 계산(피드백/시뮬레이터/프로젝션) 이전에 적용해
-    # 표시 점수와 모든 파생 수치가 같은 점수를 기준으로 하도록 한다. LLM 루브릭은
-    # 과제 충족도를 자체 평가하므로 휴리스틱 감점을 다시 중복 적용하지 않는다.
-    if llm_grade is None and payload.prompt_text.strip():
-        if prompt_fit_data["score"] < 2.5:
-            total_score = max(0.0, total_score - 1.0)
-        elif prompt_fit_data["score"] < 3.0:
-            total_score = max(0.0, total_score - 0.5)
+    # 단순 키워드 겹침은 바꿔쓰기·동의어·대명사를 안정적으로 이해하지 못한다.
+    # 따라서 prompt_fit은 투명한 진단 정보로만 제공하며 점수를 기계적으로
+    # 올리거나 내리지 않는다. 프롬프트 의미 적합성은 활성화된 루브릭 LLM이
+    # 전체 맥락에서 판단하고, 오프라인 경로는 그 한계를 명시한다.
 
     feedback = build_feedback(payload.essay_text, prompt_type, total_score)
     if llm_grade is not None:
@@ -456,7 +452,11 @@ def evaluate(payload: EvaluateRequest) -> EvaluateResponse:
     auto_rewrite = apply_corrections_to_essay(payload.essay_text, grammar_corrections_data)
     revision_diff = build_revision_diff(payload.essay_text, auto_rewrite)
 
-    cap = grammar_cap_status(payload.essay_text, prompt_type)
+    cap = (
+        grammar_cap_status(payload.essay_text, prompt_type)
+        if llm_grade is None
+        else {"applied": False, "ceiling_0_5": 5.0, "reason": ""}
+    )
 
     ai_mode = "local"
     ai_provider = "none"

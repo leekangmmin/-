@@ -105,7 +105,7 @@ def test_validated_llm_grade_drives_displayed_task_score(client, monkeypatch):
     assert result["estimated_score_0_5"] == 5.0
     assert result["score_source"] == "llm"
     assert result["engine"]["provider"] == "openai"
-    assert result["engine"]["prompt_version"].endswith("v2")
+    assert result["engine"]["prompt_version"].endswith("v3")
     assert len(result["dimensions"]) == 4
     assert result["strengths"] == ["AI-confirmed strength"]
 
@@ -126,7 +126,7 @@ def test_engine_metadata_is_complete(client):
 
     # 현재는 순수 휴리스틱 채점이므로 명시적으로 표시돼야 한다
     assert engine["provider"] == "heuristic"
-    assert engine["calibration_version"] == "expert-perfect-structure-v2"
+    assert engine["calibration_version"] == "ets-public-rubric-uncalibrated-v3"
     assert "not-applicable" in engine["model"]
 
 
@@ -136,6 +136,27 @@ def test_missing_prompt_is_reported_as_not_evaluated(client):
     assert result["prompt_fit"]["evaluated"] is False
     assert result["prompt_fit"]["missing_keywords"] == []
     assert "측정하지 않았습니다" in result["bilingual_feedback"]["summary_ko"]
+
+
+def test_surface_prompt_overlap_does_not_mechanically_change_offline_score(client):
+    without_prompt = client.post(
+        "/api/evaluate", json={"essay_text": DISCUSSION_HIGH}
+    ).json()["result"]
+    unrelated_prompt = (
+        "Should city governments replace private cars with public bicycles? "
+        "Explain your view about urban transportation and traffic."
+    )
+    with_low_overlap = client.post(
+        "/api/evaluate",
+        json={"essay_text": DISCUSSION_HIGH, "prompt_text": unrelated_prompt},
+    ).json()["result"]
+
+    assert with_low_overlap["prompt_fit"]["evaluated"] is True
+    assert with_low_overlap["prompt_fit"]["score"] < 3.0
+    assert (
+        with_low_overlap["estimated_score_0_5"]
+        == without_prompt["estimated_score_0_5"]
+    )
 
 
 def test_history_marks_current_records_as_non_legacy(client):

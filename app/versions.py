@@ -20,7 +20,7 @@ from app.grammar import GRAMMAR_RULES_VERSION  # noqa: E402
 # 이 결과 스키마(EvaluationResult/저장 JSON 구조) 버전.
 # 필드를 추가/삭제/의미변경 할 때마다 올린다. 과거 레코드는 이 필드가 아예 없으므로
 # 로드 시 "legacy-unknown"으로 표시한다 (LEGACY_RESULT_SCHEMA_VERSION 참고).
-RESULT_SCHEMA_VERSION = "3.0.0"
+RESULT_SCHEMA_VERSION = "4.0.0"
 LEGACY_RESULT_SCHEMA_VERSION = "legacy-unknown"
 
 # 내장 대체 경로는 LLM 프롬프트를 사용하지 않으므로 not-applicable이다.
@@ -28,9 +28,9 @@ LEGACY_RESULT_SCHEMA_VERSION = "legacy-unknown"
 # TOEFL_2026_GRADER_PROMPT_VERSION을 engine.prompt_version에 기록한다.
 SCORING_PROMPT_VERSION = "not-applicable-heuristic-only"
 
-# 비공개 고득점 답안 41개(토론 16, 이메일 25)의 집계 패턴으로 false-low를
-# 줄이는 보수적 구조 보정. 원문/문장 자체는 점수 코드나 저장소에 포함하지 않는다.
-CALIBRATION_VERSION = "expert-perfect-structure-v2"
+# ETS 공개 루브릭·공개 연구의 평가 구인을 반영한 휴리스틱 프록시다.
+# 전문가 골드 데이터에 대한 통계적 보정은 아직 완료되지 않았음을 명시한다.
+CALIBRATION_VERSION = "ets-public-rubric-uncalibrated-v3"
 
 # 내장 대체 경로의 provider/model. 클라우드 AI 채점이 성공하면 main.py가
 # 실제 provider/model과 TOEFL_2026_GRADER_PROMPT_VERSION으로 교체해 저장한다.

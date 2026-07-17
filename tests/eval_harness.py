@@ -129,7 +129,7 @@ def run() -> dict:
         and any("required:" in item for item in email_fit_missing["missing_keywords"])
     )
     report["template_spam_score"] = spam_fit["score"]
-    report["template_spam_detected"] = spam_fit["score"] <= 2.5 and "Template risk" in spam_fit["reason_en"]
+    report["template_spam_detected"] = "Separate template observation" in spam_fit["reason_en"]
 
     # 7) 평가 시간
     started = time.perf_counter()

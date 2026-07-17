@@ -1,122 +1,114 @@
-# 채점 시스템 문서 (v3.0.0)
+# 채점 시스템 문서 (rubric proxy v3.0.0)
 
-## 개요
-이 앱은 2026 개정 TOEFL Writing 연습용 채점기다. 지원 유형:
-- Write an Email (`email`)
-- Writing for an Academic Discussion (`academic_discussion`)
+## 제품이 표시하는 점수
 
-점수는 **연습용 추정치**이며 ETS 공식 점수가 아니다. 화면은 한 Email 또는
-Academic Discussion의 0–5 과제 점수만 표시한다. Build a Sentence를 포함한
-세 과제 결과가 없으므로 단일 답안을 1–6 Writing 섹션 밴드나 30점 척도로
-직접 환산하지 않는다.
+이 앱은 Write an Email과 Writing for an Academic Discussion 한 과제의
+**0–5 연습용 추정치**를 표시한다. ETS 공식 점수가 아니며, Build a Sentence를
+포함한 전체 Writing 섹션 1–6 밴드로 환산하지 않는다.
 
-## 아키텍처
-```
-static/ (vanilla JS, 토스 스타일 디자인 토큰)
-   │  POST /api/evaluate { essay_text, prompt_text, ... }
-   ▼
-app/main.py      — 입력 검증 → 채점 → prompt-fit 감점 → 파생 분석 → 저장
-app/scorer.py    — 6개 평가 차원 결정론적 채점 (SCORING_ENGINE_VERSION)
-app/grammar.py   — 문법 신호 분석 단일 모듈 (GRAMMAR_RULES_VERSION)
-app/advanced.py  — 첨삭·추천·대시보드 등 파생 분석 (grammar는 app/grammar.py에 위임)
-app/ai_mode.py   — 선택적 로컬/AI 첨삭 보강
-app/toefl_2026_grader.py — LLM 단일 과제 0–5 strict-JSON 계약·스키마 검증
-app/operational_grader.py — OpenAI/Claude/Gemini 운영 채점 브릿지·실패 시 내장 대체
-app/db.py        — SQLite 로컬 저장 (data/submissions.db)
-```
+공개 기준의 우선순위:
 
-## 평가 파이프라인 순서 (중요)
-1. 입력 검증 (60단어 미만 → 400, 분석 이전에 차단)
-2. 유형 감지 또는 명시 유형 사용
-3. `score_essay` — 오프라인 대체용 6차원 결정론적 채점
-4. 클라우드 AI가 명시적으로 켜져 있으면 2026 루브릭 구조화 채점 요청
-5. AI JSON·차원 키·분량·인용 근거·상한 규칙 검증. 성공 시 AI 0–5 점수를 사용하고 실패 시 내장 점수 사용
-6. 선택된 하나의 점수를 기준으로 피드백/첨삭/시뮬레이터 등 파생 분석
-7. `score_source`, 대체 사유, provider/model/prompt 버전과 함께 저장
+1. 과제 관련성·의사소통 목적과 전개
+2. 조직·응집성과 명료성
+3. 구문·어휘의 범위와 통제
+4. 문법·어휘·문장부호의 정확성
 
-## 버전 관리
-모든 평가 결과에 다음이 기록된다 (`result.engine`):
-- `scoring_engine_version` — 점수 산출 로직 버전
-- `rubric_version` — 루브릭 + 문법 규칙 조합 버전
-- `grammar_rules_version` — 문법 신호 규칙 버전
-- `exam_spec` — 시험 사양 식별자 (`toefl-writing-2026-practice-v1`)
+근거 자료:
 
-규칙·가중치·캘리브레이션을 바꾸면 반드시 해당 버전을 올려라.
-서로 다른 엔진 버전의 점수는 단순 비교하면 안 된다.
-(v2.0.0 이전 기록에는 engine 필드가 없으며 `None`으로 처리된다.)
+- [ETS Writing Scoring Guide](https://www.ets.org/pdfs/toefl/writing-rubrics.pdf)
+- [ETS Writing task overview](https://www.ets.org/toefl/test-takers/ibt/about/content/writing.html)
+- [ETS RM-23-06: A Comparison of Two TOEFL Writing Tasks](https://www.ets.org/Media/Research/pdf/RM-23-06.pdf)
 
-## 문법 신호 분석 (app/grammar.py)
-결정론적 정규식 휴리스틱. v2.0.0에서 제거한 대표 오탐:
-- "an apple" 등 올바른 a/an (소리 기반 검사로 교체)
-- "I was" (we/they was만 오류)
-- "if it were" 가정법
-- "When ..., I ..." 종속절 (진짜 comma splice만 검출)
-- "compared with", 관계대명사 "that have", 약어 "U.S."/"e.g."
-- "Does he have ...?" 조동사 의문문
+## 평가 경로
 
-상한 캡: `repeated_error`(총 6+ 또는 단일 유형 4+) → 상한 2.5/5,
-`severe_breakdown`(run-on+splice 3+ / fragment 3+ / 총 12+) → 상한 2.0/5.
+1. 60단어 미만 입력은 충분한 수행 표본이 아니므로 API에서 분석을 시작하지 않는다.
+2. 내장 엔진은 여섯 진단 차원을 계산한다.
+3. 클라우드 AI를 사용자가 명시적으로 켜면 ETS 루브릭에 정렬된 정수 0–5
+   홀리스틱 평가를 요청한다.
+4. AI 결과가 strict JSON·차원·원문 근거 검증을 통과하면 표시 점수로 사용한다.
+5. 공급자 실패나 검증 실패 시 내장 점수로 돌아가고 점수 출처와 이유를 표시한다.
+6. 프롬프트 표면 일치도는 별도 진단으로만 보여 주며 점수를 가감하지 않는다.
 
-### 품질 평가: precision/recall (Phase 2)
-Phase 1은 "정상 문장 15개 오탐 0건"만 확인했다. 이는 정밀도(precision)의 일부일 뿐
-재현율(recall, 실제 오류를 놓치지 않는지)은 검증하지 않은 상태였다.
+## 내장 엔진 v3
 
-`tests/grammar_eval_dataset.py`(71개 라벨링 항목, 19개 문법 카테고리) +
-`tests/eval_grammar_quality.py`로 측정한 결과:
+내장 엔진은 의미 판단이 제한된 오프라인 대체 경로다. 공식 루브릭의 구인을 다음
+여섯 관찰 축으로 분해한다.
 
-```
-전체: precision=1.0  recall=0.862  f1=0.926  (TP=25 FP=0 TN=42 FN=4)
-```
+| 진단 차원 | 가중치 | 관찰 내용 |
+|---|---:|---|
+| Task Fulfillment | 24% | 목적·입장·관련 지원 |
+| Elaboration | 22% | 설명·이유·예시·구체적 세부 정보 |
+| Organization | 14% | 아이디어 연결과 문장 완결성 |
+| Syntax Range | 14% | 자연스러운 문장 구조 범위 |
+| Vocabulary Control | 12% | MATTR 기반 다양성, 표현 범위, 문맥 적합성 프록시 |
+| Language Accuracy | 14% | 검출 가능한 오류의 100단어당 빈도와 심각도 |
 
-구현된 15개 카테고리(a/an, subject-verb, tense, comma splice, subordinate clause,
-relative clause, conditional, article, countability, preposition, fragment, run-on,
-punctuation, abbreviation, infinitive/gerund)는 **precision=1.0, recall=1.0**.
+### 자동 감점하지 않는 항목
 
-**알려진 커버리지 공백 (미구현, recall 0)**: pronoun reference(지시대상 모호),
-capitalization(문두 소문자), word form(품사 오용, 예: success/successful),
-collocation(관용 결합, 예: make a decision). 이 네 항목은 정규식 휴리스틱으로
-안정적으로 탐지하기 어려운 의미·품사 판단이 필요해 현재 엔진 범위 밖이다.
-`docs/phase2-audit.md`에 실패 사례 원문을 기록했다.
+- 한 단락 또는 특정 단락 수
+- 35단어가 넘는 문장
+- 연결어 개수
+- 다른 학생 이름 미언급
+- 권장 분량 초과
+- 프롬프트 표현을 그대로 쓰지 않은 바꿔쓰기
+- 고급 단어 또는 AWL 단어의 특정 비율 미달
 
-이 과정에서 발견하고 수정한 실제 버그(단순 커버리지 공백이 아닌 진짜 오류):
-- comma splice: 대명사 뒤에 고정된 동사 목록만 인식해 "she submitted", "many
-  students struggled" 같은 일반 동사를 모두 놓침 → 임의 동사를 인식하는
-  유한동사(finite verb) 판별 로직으로 교체
-- fragment: `be/been/being`을 유한동사로 잘못 취급해 "weather being terrible"
-  같은 진짜 파편을 통과시킴 → 유한형(is/are/was/were/am)만 인정하도록 수정
-- run-on: 임계값이 40단어로 너무 관대해 제품 문구("35단어 이상 분리 권장")와
-  불일치 → 35로 통일
-- punctuation: 마침표 2개 연속(생략부호 3개 미만)을 놓침 → 패턴 추가
-- preposition: "depends of"(3인칭) 형태를 놓침 → 정규식에 `s?` 추가
+단락 수와 긴 문장 비율은 학습용 진단값으로 남아 있지만 점수 공식에는 들어가지
+않는다. 분량은 아이디어를 보여 줄 기회의 정도로만 포화형 반영되며, 길어졌다는
+이유로 점수가 내려가지 않는다.
 
-## 캘리브레이션 상태
-- 전역 감점 `strict_penalty` 기본 0.55 (v1의 1.35는 오탐 노이즈 보정값이라 폐기)
-- 전문가 만점 답안 2개에서 확인한 추상적 구조만 보수적으로 반영했다: Email의
-  완전한 목적·복수 요청·정중성·형식, Discussion의 독립 근거·복수 의견 연결·반론
-  응답·구체적 예시. 원문은 저장소에 포함하지 않았다.
-- 이 두 샘플만으로 MAE·kappa 같은 절대 정확도를 주장하지 않는다. 더 많은 전문가 골드
-  데이터를 validation/locked-test로 확보해야 한다.
+### 어휘 다양성
 
-## 평가 하네스
-```
-.venv/bin/python -m pytest tests/          # 45개 유닛/통합 테스트
-.venv/bin/python -m tests.eval_harness     # 품질 게이트
-```
-게이트: 오탐 0건 / 순위 역전 0건 / 반복 채점 편차 0 / 경계 입력 안전 /
-인젝션 상위밴드 차단 / 주제 이탈 감지.
+원시 type-token ratio는 답안이 길수록 낮아지는 편향이 있어 사용하지 않는다.
+ETS RM-23-06에서 사용한 것과 같은 계열의 moving-average type-token ratio
+(MATTR)를 사용한다. 학술 어휘나 긴 내용어는 표현 범위의 보조 증거일 뿐 필수
+체크리스트나 상한 조건이 아니다.
 
-테스트 픽스처(tests/fixtures.py)는 전부 자체 제작 합성 데이터(Tier D)로,
-회귀 방지용이지 인간 채점 대비 정확도의 증거가 아니다.
+### 문법
 
-## 보안·개인정보
-- 모든 답안·평가·API 키는 로컬(SQLite/.env)에만 저장, 외부 전송 없음
-  (AI 보강을 명시적으로 켠 경우에만 해당 provider로 답안 전송)
-- 프론트엔드는 모든 사용자 텍스트를 이스케이프 후 렌더 (XSS 방지)
-- CORS는 localhost 오리진으로 제한
-- 학생 답안 속 지시문은 데이터로만 취급 (로컬 엔진은 정규식 기반이라 인젝션 무영향)
+긴 문장은 그 자체로 run-on이 아니다. 로컬 규칙은 근거가 비교적 명확한
+comma splice, fragment, 수일치, 시제, 관사, 전치사, 문장부호 등을 집계한다.
+오류 수는 답안 길이에 맞춰 정규화한다.
+
+기계적 상한은 다음처럼 반복적인 언어 붕괴가 실제로 검출된 경우에만 사용한다.
+
+- 반복 오류(총 6+ 또는 단일 유형 4+) → 최대 3.0
+- 심각한 문장 구조 붕괴 → 최대 2.0
+- Language Accuracy가 1.0 이하 → 최대 2.0
+
+## 클라우드 루브릭 채점 v3
+
+Academic Discussion 진단 축은 관련성·전개, 조직·응집성, 구문·어휘,
+언어 정확성이다. 다른 학생 언급은 선택 사항이다. Email은 의사소통 목적,
+사회적 관습·어조, 언어 사용, 조직을 본다.
+
+누락 항목, 인사말, 문단 수, 문장 길이, 템플릿 표현 하나에 고정 상한을 적용하지
+않고 실제 의사소통과 명료성에 미친 영향을 홀리스틱하게 판단한다.
+
+## 버전과 검증
+
+- scoring engine: `3.0.0`
+- grammar rules: `3.0.0`
+- result schema: `4.0.0`
+- calibration: `ets-public-rubric-uncalibrated-v3`
+
+회귀 게이트:
+
+- 고품질 > 중품질 > 저품질 순위
+- 올바른 문장 오탐 0
+- 단락 줄바꿈 방식에 따른 점수 불변
+- 통제된 긴 문장 문법 오탐 금지
+- 동일 입력 결정론
+- 인젝션 40개 쌍 점수 조작 방지
+- 경계 입력 안전
+
+합성 테스트는 회귀 방지용이다. 전문가가 채점한 충분한 골드 데이터가 없으므로
+MAE, exact agreement, weighted kappa를 근거로 실제 정확도를 주장하지 않는다.
 
 ## 알려진 한계
-- 휴리스틱 엔진은 의미·논리 품질을 깊게 평가하지 못한다 (표면 신호 기반)
-- Build a Sentence 유형 미지원 (공식 문항 데이터 확보 후 결정론적 엔진으로 추가 예정)
-- 전문가 채점 데이터 부재 → 캘리브레이션·정확도 검증 불가
-- 단일 과제로 Writing 섹션 1–6 밴드를 산출하지 않음
+
+- 내장 엔진은 논리의 타당성, 미묘한 관련성, 관용적 어휘 정확성을 완전히 이해하지 못한다.
+- 프롬프트 표면 진단은 동의어와 복잡한 바꿔쓰기를 놓칠 수 있어 점수에 반영하지 않는다.
+- 정규식 문법 엔진은 지시 대상, 일부 품사 오류, 복잡한 collocation을 놓칠 수 있다.
+- 0.5 반올림 경계에서는 작은 차이가 표시 점수를 바꿀 수 있다.
+- 가장 신뢰도 높은 운영 구조는 충분한 전문가 골드 데이터에 맞춘 인간·AI·통계 모델의 결합이며, 현재 제품은 그 수준을 증명하지 않았다.

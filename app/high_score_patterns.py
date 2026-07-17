@@ -13,6 +13,14 @@ HIGH_SCORE_MOVES = {
     "email": ["greeting", "purpose", "situation_detail", "polite_request", "second_action", "commitment", "closing"],
 }
 
+# Only these moves are broadly necessary to accomplish the task. The remaining
+# patterns are optional ways to develop or organize a response; their absence
+# must not be presented as a scoring defect.
+CORE_MOVES = {
+    "academic_discussion": ["stance", "reason"],
+    "email": ["purpose", "situation_detail"],
+}
+
 MOVE_LABELS_KO = {
     "greeting": "자연스러운 인사", "purpose": "글을 쓰는 목적", "situation_detail": "구체적인 상황 설명",
     "polite_request": "정중하고 직접적인 요청", "second_action": "두 번째 요청 또는 후속 조치",
@@ -56,7 +64,7 @@ def analyze_high_score_structure(text: str, task_type: str) -> StructureAnalysis
     normalized = text.strip()
     patterns = _PATTERNS[task_type]
     detected = [name for name, pattern in patterns.items() if re.search(pattern, normalized, re.I | re.M)]
-    missing = [name for name in HIGH_SCORE_MOVES[task_type] if name not in detected]
+    missing = [name for name in CORE_MOVES[task_type] if name not in detected]
     repeated_frame = len(re.findall(r"\b(as .* becomes|the question of whether|i strongly agree with|while .* raises)\b", normalized, re.I)) >= 3
     if missing:
         first = missing[0]

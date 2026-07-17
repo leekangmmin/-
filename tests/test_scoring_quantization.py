@@ -1,8 +1,4 @@
-"""점수공식 변경 금지 게이트 — 양자화 메타데이터 저장 테스트.
-
-이 테스트는 score_essay()의 표시 점수(공식)가 바뀌지 않았음과, 진단용
-메타데이터(score_essay_detailed)가 정확히 기록되는지를 확인한다.
-"""
+"""점수 API 일관성·양자화 메타데이터 저장 테스트."""
 
 from app.scorer import SCORING_FORMULA_VERSION, score_essay, score_essay_detailed
 from tests.fixtures import DISCUSSION_HIGH, DISCUSSION_LOW
@@ -10,8 +6,7 @@ from tests.fixtures import DISCUSSION_HIGH, DISCUSSION_LOW
 
 class TestBackwardCompatibility:
     def test_score_essay_matches_detailed_total(self):
-        """기존 score_essay()의 표시 점수는 상세 버전과 완전히 동일해야 한다 —
-        공식이 바뀌지 않았다는 증거."""
+        """간단 진입점과 상세 진입점은 같은 표시 점수를 반환해야 한다."""
         _, total_simple = score_essay(DISCUSSION_HIGH, "academic_discussion")
         breakdown = score_essay_detailed(DISCUSSION_HIGH, "academic_discussion")
         assert total_simple == breakdown.total_0_5

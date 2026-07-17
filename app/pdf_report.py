@@ -64,6 +64,12 @@ DIM_KO = {
     "Example": "근거·예시",
     "Grammar": "문법",
     "Vocabulary": "어휘",
+    "Task Fulfillment": "과제 수행",
+    "Elaboration": "전개",
+    "Organization": "조직·응집성",
+    "Syntax Range": "구문 범위",
+    "Vocabulary Control": "어휘 통제",
+    "Language Accuracy": "언어 정확성",
 }
 
 # 문법 오류 유형 영문 → 한글 라벨

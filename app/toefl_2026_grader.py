@@ -24,7 +24,7 @@ FeedbackLanguage = Literal["ko", "en"]
 ErrorType = Literal["verb_as_subject", "missing_article", "prep_wrong_pos", "other"]
 ErrorSeverity = Literal["meaning_impeding", "minor"]
 
-TOEFL_2026_GRADER_PROMPT_VERSION = "toefl-2026-task-grader-v2"
+TOEFL_2026_GRADER_PROMPT_VERSION = "toefl-2026-task-grader-v3"
 
 EMAIL_DIMENSIONS: tuple[str, ...] = (
     "purposeful_communication",
@@ -35,8 +35,8 @@ EMAIL_DIMENSIONS: tuple[str, ...] = (
 
 ACADEMIC_DISCUSSION_DIMENSIONS: tuple[str, ...] = (
     "elaboration_relevance",
+    "organization_coherence",
     "syntax_vocabulary",
-    "discourse_conventions",
     "language_accuracy",
 )
 
@@ -64,35 +64,37 @@ For task_type "email", return exactly these dimensions:
 4. organization - Logical flow from greeting through the body to the closing.
 
 For task_type "academic_discussion", return exactly these dimensions:
-1. elaboration_relevance - State a clear position, remain on task, and develop it with specific reasoning or examples.
-2. syntax_vocabulary - Use a range of sentence structures and precise, appropriate, non-repetitive vocabulary.
-3. discourse_conventions - Contribute meaningfully and engage with at least one other student's post by name.
-4. language_accuracy - Maintain grammatical accuracy.
+1. elaboration_relevance - State a clear position, remain on task, and develop it with relevant explanations, examples, or details.
+2. organization_coherence - Express and connect ideas clearly enough that the contribution is easy to follow. Paragraph count and explicit transition count are not scoring requirements.
+3. syntax_vocabulary - Use an effective range of sentence structures and precise, appropriate vocabulary. Reward natural control, not difficulty for its own sake.
+4. language_accuracy - Maintain grammatical, lexical, spelling, and punctuation accuracy under a first-draft timed-writing standard.
 
 HOLISTIC BAND ANCHORS
 5 [ETS-VERIFIED]: Fully accomplishes the task. Elaboration effectively supports the communicative purpose; syntactic variety and word choice are effective, precise, and idiomatic; language facility is consistent. The response is relevant and very clearly expressed, with almost no errors beyond minor timed-writing slips.
-4 [SUMMARY]: Addresses the task well and is generally well developed. It uses good structural variety and appropriate vocabulary. Occasional errors do not obscure meaning. For Email, all required points are covered and tone is appropriate.
-3 [SUMMARY]: Addresses the task, but development is uneven or thin, or one required point is underdeveloped. Grammar or vocabulary errors are noticeable and may occasionally obscure meaning. Sentence range or vocabulary may be limited or repetitive. A mismatched Email tone normally caps the score at 3.
-2 [SUMMARY]: Only partially accomplishes the task; a required point is missing or the response is too short. Frequent errors interfere with meaning.
-1 [SUMMARY]: Minimal or seriously flawed response; communication largely fails and errors are pervasive.
+4 [ETS-RUBRIC SUMMARY]: A generally successful and relevant response with adequately developed explanations, examples, or details; varied syntax and appropriate word choice; and few language errors.
+3 [ETS-RUBRIC SUMMARY]: A partially successful, mostly relevant and understandable response. Part of the development may be missing, unclear, or irrelevant; language shows some range but also noticeable errors.
+2 [ETS-RUBRIC SUMMARY]: A mostly unsuccessful attempt whose ideas are poorly elaborated or only partly relevant, with limited syntax/vocabulary and accumulated language errors that may make ideas hard to follow.
+1 [ETS-RUBRIC SUMMARY]: An ineffective attempt with few coherent ideas, severely limited language range, serious frequent errors, or minimal original language.
 0 [ETS-VERIFIED]: No scorable response: blank, rejects or copies the prompt, is not in English, is off-topic, or contains arbitrary keystrokes.
 
 SPECIAL SCORING RULES
 - [ETS-VERIFIED] FIRST-DRAFT STANDARD: Accept minor timed-writing errors that do not impede meaning. Do not over-penalize them.
-- [ETS-VERIFIED] COMPLETENESS BEATS POLISH: Coverage of all required points outweighs elegance. A missing required point lowers the ceiling by at least one full band.
-- [ETS-VERIFIED] NO FACT-CHECKING: Invented reasons, names, and dates are acceptable. Concrete invented detail can be stronger than vague content.
-- [ETS-VERIFIED] TEMPLATE PENALTY: Detect obvious formulaic filler and reflect it in the relevant language or discourse dimension and the holistic score. A conventional Email greeting/sign-off or an Academic Discussion framing phrase is not, by itself, template abuse. Penalize only generic memorized language that adds no prompt-specific meaning, crowds out the writer's own contribution, or obscures the response.
+- [RUBRIC-ALIGNED] HOLISTIC JUDGMENT: Do not calculate the score by counting paragraphs, transitions, named classmates, required-point checkboxes, sentence length, advanced words, or errors. Use those observations only as evidence for the holistic descriptors.
+- [RUBRIC-ALIGNED] NO MECHANICAL CAPS: An omitted detail, unconventional paragraphing, long sentence, missing greeting, or isolated error has no automatic band cap. Judge its actual effect on purpose, clarity, elaboration, social appropriateness, and language control.
+- [TASK-DESIGN] DISCUSSION PARTICIPATION: Referring to a classmate can show meaningful participation, but it is optional. Never deduct solely because no classmate is named.
+- [TASK-DESIGN] CONTENT KNOWLEDGE: Do not verify outside factual accuracy unless the claim makes the response internally incoherent. The task measures writing, and topics require no specialized knowledge.
+- [TASK-DESIGN] TEMPLATE RELEVANCE: Detect obvious formulaic filler and reflect it only when the filler adds no prompt-specific meaning, crowds out the writer's own contribution, or obscures the response. A conventional Email greeting/sign-off or an Academic Discussion framing phrase is not, by itself, template abuse.
 - [CALIBRATED] LENGTH: Email 80-120 words and Academic Discussion 100-130 words are planning targets, not hard score caps. A longer response can earn 5 when it stays relevant, purposeful, well controlled, and nearly error-free. Do not deduct solely for exceeding the target; deduct only when brevity prevents development or extra length causes repetition, irrelevance, weak editing, or language-control problems.
 - [CALIBRATED] FULL-SCORE EMAIL SHAPE: A complete, specific context/purpose, multiple polite requests when the prompt calls for them, and a suitable opening and closing can demonstrate full task accomplishment. Do not require a promise or commitment when gratitude appropriately closes the exchange.
-- [CALIBRATED] FULL-SCORE DISCUSSION SHAPE: A response may earn 5 by stating a clear position, developing an independent rationale, engaging one or more named classmates, answering a counterview, and using a concrete example. Multi-paragraph organization and a brief concluding reinforcement are acceptable, but paragraph count and formulaic framing alone neither earn nor lose points.
+- [CALIBRATED] FULL-SCORE DISCUSSION SHAPE: A response may earn 5 by stating a clear position and developing it with relevant, well-elaborated explanations, examples, or details in precise, well-controlled language. Engaging a classmate, answering a counterview, using multiple paragraphs, or adding a conclusion may help, but none is required.
 
 SCORING PROCEDURE
 1. Use expected_word_count and report whether it is inside the advisory task target range; never turn that boolean into an automatic penalty.
-2. Compare every required prompt point or discussion post with the response; list covered and missed points.
-3. Score every task-specific rubric dimension from 0 to 5.
-4. Classify every notable error as meaning_impeding or minor.
-5. Detect template filler and Email tone mismatch; record every cap that applies.
-6. Derive an integer holistic overall_score. It is not a simple average. No dimension at 2 or below can yield an overall 5. A missing required point or tone cap constrains the ceiling.
+2. Identify only the professor's or task's actual communicative requirements. Classmate opinions are context, not required points. List covered and genuinely missed requirements.
+3. Independently score every task-specific rubric dimension from 0 to 5, citing concrete response behavior in each comment.
+4. Classify notable errors as meaning_impeding or minor. Do not label stylistic preferences as grammatical errors.
+5. Detect only substantive template filler or a genuinely inappropriate Email register. Record observations in caps_triggered only when they materially constrain communication; otherwise leave it empty.
+6. Re-read the whole response and derive an integer holistic overall_score from the band anchors. It is not a simple arithmetic average. No dimension at 2 or below can yield an overall 5.
 7. Write all comments, strengths, fixes, and the verdict in feedback_language.
 
 KOREAN LEARNER ERROR DIAGNOSTIC
@@ -265,20 +267,9 @@ def parse_task_grade(
     if set(result.required_points.covered) & set(result.required_points.missed):
         raise ValueError("the same required point cannot be both covered and missed")
 
-    cap_set = set(result.caps_triggered)
-    if result.required_points.missed:
-        if "missing_required_point" not in cap_set:
-            raise ValueError("a missed required point must trigger missing_required_point")
-        if result.overall_score > 4:
-            raise ValueError("a missing required point prevents an overall score of 5")
-    if "tone_mismatch_cap_3" in cap_set and result.overall_score > 3:
-        raise ValueError("tone_mismatch_cap_3 conflicts with overall_score above 3")
-
     if result.template_flag.detected:
         if not result.template_flag.evidence:
             raise ValueError("detected template use requires evidence")
-        if "template_detected" not in cap_set:
-            raise ValueError("detected template use must be recorded in caps_triggered")
     elif result.template_flag.evidence:
         raise ValueError("template evidence must be empty when detected is false")
 

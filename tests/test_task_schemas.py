@@ -32,8 +32,8 @@ class TestDimensionSchemas:
     def test_discussion_has_official_four_axes(self):
         assert DISCUSSION_DIMENSIONS == [
             "elaboration_relevance",
+            "organization_coherence",
             "syntax_vocabulary",
-            "discourse_conventions",
             "language_accuracy",
         ]
 
@@ -92,4 +92,4 @@ class TestProviderUsesTaskSpecificPrompts:
             InputAnalysis(),
         )
         assert "elaboration_relevance" in captured["system"]
-        assert "discourse_conventions" in captured["system"]
+        assert "organization_coherence" in captured["system"]

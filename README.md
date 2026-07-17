@@ -122,7 +122,7 @@ GitHub Pages                         Desktop / Docker / source
            │                              FastAPI application
            │                                      │
            └──── deterministic analysis ──────────┤
-                                                  ├─ scoring + prompt fit
+                                                  ├─ scoring + non-scoring prompt diagnostic
                                                   ├─ grammar + vocabulary
                                                   ├─ high-score structure
                                                   ├─ Build a Sentence
@@ -134,7 +134,7 @@ Optional enhancement paths
 └─ Cloud AI: explicit setup only, disabled by default
 ```
 
-운영 화면은 Email/Academic Discussion 한 과제의 **0–5 점수**를 표시합니다. 클라우드 AI가 꺼져 있으면 결정론적 Offline Core를 사용하고, 사용자가 OpenAI·Claude·Gemini를 직접 설정해 켜면 엄격한 2026 루브릭 JSON 검증을 통과한 AI 점수를 사용합니다. AI 응답이 실패하거나 스키마·의미 검증을 통과하지 못하면 내장 점수로 안전하게 돌아가며, 화면에 점수 출처와 대체 사유를 표시합니다.
+운영 화면은 Email/Academic Discussion 한 과제의 **0–5 연습용 추정치**를 표시합니다. 클라우드 AI가 꺼져 있으면 ETS 공개 루브릭에 정렬한 결정론적 Offline Core를 사용하고, 사용자가 OpenAI·Claude·Gemini를 직접 설정해 켜면 엄격한 2026 루브릭 JSON 검증을 통과한 AI 점수를 사용합니다. AI 응답이 실패하거나 스키마·의미 검증을 통과하지 못하면 내장 점수로 안전하게 돌아가며, 화면에 점수 출처와 대체 사유를 표시합니다. 단락 수·긴 문장·연결어 개수·프롬프트 단어 복사 여부는 자동 감점 사유가 아닙니다.
 
 ## Modes
 

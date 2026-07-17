@@ -123,11 +123,12 @@ DATASET: list[GrammarEvalItem] = [
 
     # ── run-on sentence ──────────────────────────────────────────────────
     GrammarEvalItem(
-        "runon_tp_1", "run_on", "true_positive",
+        "long_complex_tn_1", "run_on", "true_negative",
         "The professor explained the assignment in great detail and then answered every single question from students "
         "and continued discussing the grading rubric and the deadline extension policy for over thirty minutes without "
         "any pause at all before finally moving on to the next topic of the lecture.",
-        True,
+        False,
+        "길고 다소 무거운 문장이지만 길이 자체는 문법 오류가 아님",
     ),
     GrammarEvalItem(
         "runon_tn_1", "run_on", "true_negative",

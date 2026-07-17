@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Literal, TypedDict
 
+from app.grammar import analyze_grammar, grammar_analysis_text
 from app.models import SentenceEdit
 from app.scorer import EssayMetrics, analyze_essay
 
@@ -32,11 +33,6 @@ def _improve_sentence(sentence: str) -> tuple[str, str]:
     improved = re.sub(r"\ba lot of\b", "many", improved, flags=re.IGNORECASE)
     improved = re.sub(r"\bthings\b", "factors", improved, flags=re.IGNORECASE)
 
-    if len(improved.split()) > 32:
-        improved = improved.replace(", and", ". In addition," if ", and" in improved else ", and", 1
-        )
-        note = "Reduced run-on tendency and improved flow"
-
     return improved, note
 
 
@@ -44,43 +40,46 @@ def build_feedback(
     essay_text: str, prompt_type: str, total_score: float
 ) -> FeedbackPayload:
     metrics: EssayMetrics = analyze_essay(essay_text)
-    recommended_words = 100 if prompt_type == "email" else 120
+    planning_floor = 80 if prompt_type == "email" else 100
+    grammar = analyze_grammar(grammar_analysis_text(essay_text, prompt_type))
 
     strengths: list[str] = []
     weaknesses: list[str] = []
     action_plan: list[str] = []
 
-    if metrics.word_count >= recommended_words:
-        strengths.append("요구 분량을 안정적으로 충족하고 있습니다.")
+    if metrics.word_count >= planning_floor:
+        strengths.append("아이디어를 전개할 수 있는 권장 연습 분량을 확보했습니다.")
     else:
-        weaknesses.append("분량이 짧아 논리 전개가 충분히 드러나지 않습니다.")
+        weaknesses.append("현재 답안은 전개를 보여 줄 공간이 다소 제한적입니다.")
         action_plan.append(
-            f"최소 {recommended_words}단어를 넘기도록 핵심 주장 뒤에 이유 2개와 구체 예시 1개를 추가하세요. (분량 미달은 5.0점 이상 불가)"
+            "단어 수를 채우기 위한 문장 대신, 가장 중요한 주장 하나에 이유나 구체적 세부 정보를 보태세요."
         )
 
-    if metrics.paragraph_count >= 3:
-        strengths.append("문단 구성이 명확해 읽는 흐름이 안정적입니다.")
+    if metrics.sentence_count >= 4:
+        strengths.append("여러 문장에 걸쳐 핵심 아이디어를 발전시키고 있습니다.")
     else:
-        weaknesses.append("문단 분리가 약해 아이디어 경계가 불분명합니다.")
-        action_plan.append("서론-본론-결론 3단 구조로 문단을 분리하세요. (문단 미분리 시 5.0점 이상 불가)")
+        weaknesses.append("핵심 아이디어의 설명이 짧아 수행 정도를 판단하기 어렵습니다.")
+        action_plan.append("입장이나 목적 뒤에 원인·결과 또는 구체적 상황을 한두 문장 보태세요.")
 
-    if metrics.transition_hits >= 3:
-        strengths.append("연결어 사용이 있어 문장 간 논리 연결이 잘 보입니다.")
+    if metrics.evidence_hits >= 2:
+        strengths.append("이유·예시·결과를 통해 주장을 뒷받침하는 신호가 보입니다.")
     else:
-        weaknesses.append("연결어가 부족해 문장 간 점프가 발생합니다.")
+        weaknesses.append("주장을 뒷받침하는 이유나 세부 정보가 제한적입니다.")
         action_plan.append(
-            "However, Therefore, For example 같은 연결어를 문단당 1개 이상 넣으세요. (연결어 부족 시 5.0점 이상 불가)"
+            "연결어를 억지로 추가하지 말고, 독자가 납득할 수 있는 이유 또는 사례를 한 가지 구체화하세요."
         )
 
-    if metrics.lexical_diversity >= 0.48:
-        strengths.append("어휘 반복이 과하지 않아 표현 폭이 괜찮습니다.")
+    if metrics.lexical_diversity >= 0.62:
+        strengths.append("답안 길이 영향을 줄인 어휘 다양성 지표가 안정적입니다.")
     else:
-        weaknesses.append("같은 단어 반복이 많아 표현이 단조롭게 느껴집니다.")
-        action_plan.append("반복 단어 5개를 동의어로 교체해 어휘 다양성을 높이세요. (어휘 다양성 부족 시 5.0점 이상 불가)")
+        weaknesses.append("가까운 문장 사이에서 일부 표현이 반복될 가능성이 있습니다.")
+        action_plan.append("동의어 수를 늘리기보다 반복된 내용어가 가장 정확한 표현인지 먼저 확인하세요.")
 
-    if metrics.long_sentence_ratio > 0.25:
-        weaknesses.append("긴 문장이 많아 문법 오류 가능성과 가독성 저하가 있습니다.")
-        action_plan.append("35단어 이상 문장을 둘로 분리해 명확도를 높이세요.")
+    if grammar.total == 0:
+        strengths.append("내장 규칙이 확인할 수 있는 명백한 문법 오류가 없습니다.")
+    else:
+        weaknesses.append(f"검출 가능한 문법·문장부호 문제가 {grammar.total}건 있습니다.")
+        action_plan.append("표시된 오류의 실제 문맥을 확인한 뒤, 의미 전달을 방해하는 항목부터 수정하세요.")
 
     if not action_plan:
         action_plan.append("현재 구조를 유지하면서 근거 문장을 더 구체화해 1단계 상향을 노리세요.")
@@ -92,15 +91,6 @@ def build_feedback(
             sentence_edits.append(
                 SentenceEdit(original=sentence, improved=improved, note=note)
             )
-
-    if not sentence_edits:
-        sentence_edits.append(
-            SentenceEdit(
-                original="I think students should use evidence clearly.",
-                improved="I argue that students should support each claim with specific evidence.",
-                note="Upgrade to a more academic and precise tone",
-            )
-        )
 
     if prompt_type == "email":
         upgraded_sample = (
@@ -120,8 +110,8 @@ def build_feedback(
             "demands, so students gain transferable skills before graduation."
         )
 
-    confidence = "high" if 2.5 <= total_score <= 4.5 else "medium"
-    if metrics.word_count < recommended_words:
+    confidence = "medium"
+    if metrics.word_count < planning_floor or grammar.total >= 6:
         confidence = "low"
 
     return {

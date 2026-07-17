@@ -74,8 +74,8 @@ def requirement_extraction_instructions(task_type: str) -> str:
             "tone_expectation(기대되는 어조), constraints(제약조건). "
             "각 required_content_point마다 답안에서 충족(met)/부분충족(partially_met)/"
             "누락(missing) 여부와 근거(evidence, 답안 원문 발췌)를 판단하라. "
-            "필수 항목 누락은 최소 1개 밴드를 낮추고, 수신자/상황과 맞지 않는 "
-            "어조는 일반적으로 전체 점수를 3으로 제한한다."
+            "누락이나 어조 문제는 실제 의사소통 효과에 미친 영향만 홀리스틱하게 "
+            "반영하고 기계적인 밴드 상한을 적용하지 마라."
         )
     if task_type == "academic_discussion":
         return (
@@ -84,9 +84,9 @@ def requirement_extraction_instructions(task_type: str) -> str:
             "새로운 기여 여부(new_contribution, 단순 동의/반복이 아닌지), "
             "다른 참여자 의견과의 연결(engagement_with_other_views), "
             "다른 참여자 의견을 왜곡하지 않았는지(distortion_of_other_views). "
-            "최종 담화 규약 평가에서는 최소 한 명의 학생을 이름으로 언급하여 "
-            "실질적으로 연결했는지 확인하라. 각 요구사항마다 충족 여부와 답안 "
-            "원문 근거를 판단하라."
+            "다른 참여자 의견을 언급하는 것은 선택 사항이며, 이름을 언급하지 "
+            "않았다는 이유만으로 감점하지 마라. 각 요구사항마다 충족 여부와 "
+            "답안 원문 근거를 판단하라."
         )
     raise ValueError(f"지원하지 않는 task_type: {task_type}")
 
@@ -94,11 +94,11 @@ def requirement_extraction_instructions(task_type: str) -> str:
 def dimension_scoring_instructions(task_type: str) -> str:
     dims = dimension_ids_for(task_type)
     task_rule = (
-        "purposeful_communication을 최우선으로 보고, 필수 항목을 누락하면 "
-        "최소 1개 정수 밴드를 낮추며, 어조 불일치 시 일반적으로 3점 상한을 적용하라."
+        "purposeful_communication을 중심으로 목적·세부 정보·사회적 관습의 "
+        "실제 효과를 종합하고 기계적 상한을 적용하지 마라."
         if task_type == "email"
-        else "명확한 입장·구체적 전개·관련성과 함께 다른 학생을 이름으로 언급해 "
-        "의미 있게 연결했는지를 평가하라."
+        else "명확한 입장·구체적 전개·관련성·조직과 언어 통제력을 평가하라. "
+        "다른 학생 언급은 선택 사항이다."
     )
     return (
         f"다음 {len(dims)}개 차원 각각에 대해 점수와 근거를 산출하라 (dimension_id는 "

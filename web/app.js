@@ -47,10 +47,7 @@ function detectType(text) {
 function analyzeStructure(text,type) {
   const entries = Object.entries(PATTERNS[type]);
   const detected = entries.filter(([,re]) => re.test(text)).map(([key]) => key);
-  let required = entries.map(([key]) => key);
-  if (type === "email" && /\b(express (?:my|our) (?:sincere )?gratitude|writing to thank|would (?:also )?like to thank|thank you for)\b/i.test(text)) {
-    required = required.filter(key => key !== "request");
-  }
+  const required = type === "email" ? ["purpose","situation"] : ["stance","reason"];
   const missing = required.filter((key) => !detected.includes(key));
   const requiredDetected = required.filter(key => detected.includes(key));
   return {detected:requiredDetected,missing,requiredCount:required.length};
@@ -65,40 +62,73 @@ function emailSignals(text) {
   return {details,polite,flow,detailSentences,purpose:PATTERNS.email.purpose.test(text)};
 }
 
+function mattr(ws,windowSize=50) {
+  const lowered=ws.map(w=>w.toLowerCase());
+  if(!lowered.length) return 0;
+  if(lowered.length<=windowSize) return new Set(lowered).size/lowered.length;
+  let total=0,n=0;
+  for(let i=0;i<=lowered.length-windowSize;i++){total+=new Set(lowered.slice(i,i+windowSize)).size/windowSize;n++;}
+  return total/n;
+}
+
+function genericPenalty(text) {
+  const lower=text.toLowerCase();
+  const frames=["in today's society","everyone has different opinions","there are many reasons","this is very important","many things"];
+  return Math.min(1.25,frames.filter(x=>(lower.split(x).length-1)>=2).length*.35);
+}
+
+function grammarRisk(text) {
+  const patterns=[
+    /\b(students|people|children|they|we)\s+is\b/gi,
+    /\b(we|they)\s+was\b/gi,
+    /\b(he|she|it)\s+don't\b/gi,
+    /\bthere\s+is\s+(many|several|numerous|students|people|reasons)\b/gi,
+    /\bdiscuss(?:es|ed)?\s+about\b/gi,
+    /\b(a|an)\s+(information|advice|research|evidence|homework)\b/gi,
+    /\bmany\s+(information|advice|research|evidence|homework)\b/gi,
+    /\bmore\s+(better|worse|easier|harder)\b/gi
+  ];
+  return patterns.reduce((sum,re)=>sum+count(text,re),0);
+}
+
 function score(text,type) {
-  const ws = words(text), ss = sentences(text), unique = new Set(ws.map(w=>w.toLowerCase()));
+  const ws = words(text), ss = sentences(text);
   const paragraphs = text.split(/\n\s*\n/).filter(x=>x.trim()).length;
-  const transitions = count(text,/\b(however|therefore|moreover|furthermore|in addition|for example|for instance|as a result|consequently|thus|overall)\b/gi);
-  const evidence = count(text,/\b(because|for example|for instance|according to|research|study|data|as a result)\b/gi);
-  const avg = ws.length / Math.max(ss.length,1), diversity = unique.size / Math.max(ws.length,1);
-  const structureAnalysis=analyzeStructure(text,type), structureMoves=structureAnalysis.detected.length;
-  const structureTotal=structureAnalysis.requiredCount;
+  const transitions = count(text,/\b(although|while|whereas|however|therefore|moreover|furthermore|in addition|for example|for instance|as a result|consequently|thus|overall|because|since|for these reasons)\b/gi);
+  const evidence = count(text,/\b(because|since|for example|for instance|according to|research|study|data|as a result|in my experience)\b/gi);
+  const avg = ws.length / Math.max(ss.length,1), diversity = mattr(ws);
   const email=type==="email"?emailSignals(text):null;
   const target = type === "email" ? 80 : 100;
-  const structure = quarter(1.2 + 2.5*(structureMoves/structureTotal) + Math.min(paragraphs,4)*.25);
-  const content = type==="email"
-    ? quarter(1.4+Math.min(ws.length/target,1)*1.2+(email.purpose?.8:0)+Math.min(email.details,4)*.2+(email.polite>=2?.4:0)+(prompt.value.trim()?topicFit(prompt.value,text)*.8:.4))
-    : quarter(1.4+Math.min(ws.length/target,1)*1.2+Math.min(evidence,4)*.4+(prompt.value.trim()?topicFit(prompt.value,text)*.8:.4));
+  const development=clamp((ws.length-20)/(target-20),0,1);
+  const stance=/\b(i (?:firmly |strongly )?(?:believe|agree|disagree|maintain|support|prefer)|in my view|from my perspective|(?:schools?|students?|universities|people)\s+(?:should|must))\b/i.test(text);
+  const reasons=count(text,/\b(because|since|one reason|the reason|due to|so that)\b/gi);
+  const examples=count(text,/\b(for example|for instance|in my experience|research|a study|data|a student who|students who|people who)\b/gi);
+  const explanations=count(text,/\b(as a result|therefore|consequently|thus|this (?:means|shows|allows|helps)|which (?:means|shows|allows|helps|is))\b/gi);
+  const support=reasons+examples+explanations;
+  const template=genericPenalty(text);
+  const task=type==="email"
+    ? quarter(.75+(email.purpose?1.35:0)+development*.75+Math.min(1,email.details/4)*1.25+(email.detailSentences>=3?.55:email.detailSentences*.15)+(email.polite?.25:0)-template)
+    : quarter(1+(stance?1.25:0)+development*.75+Math.min(1,support/3)*1.4+(ss.length>=4?.35:0)-template);
+  const elaboration=type==="email"
+    ? quarter(1+development*.8+Math.min(email.details,5)*.3+Math.min(1,email.detailSentences/4)*.8-template)
+    : quarter(1+development*.8+Math.min(reasons,2)*.45+Math.min(examples,2)*.65+Math.min(explanations,2)*.45+(support>=3?.35:0)-template);
   const flowHits=type==="email"?Math.max(transitions,email.flow):transitions;
-  const coherence = quarter(1.8+Math.min(flowHits,5)*.35+(paragraphs>=3?.7:0)+(diversity>=.45?.5:0)+(type==="email"&&email.detailSentences>=4?.5:0));
-  const detail = type==="email"
-    ? quarter(1.4+(email.details>=6||email.detailSentences>=6?2:email.details>=3||email.detailSentences>=4?1.4:.7)+(ss.length>=7?1:.2)+(avg>=12?.5:0)+(email.details>=3&&flowHits>=2?.25:0))
-    : quarter(1.4+Math.min(evidence,4)*.55+(ss.length>=7?.7:.2));
-  const grammar = quarter(2 + (avg>=10&&avg<=28?1:0) + (ss.every(s=>words(s).length<=36)?1:0) + (ss.length>=6?.5:0));
-  const vocabulary = quarter(2+(diversity>=.55?1.5:diversity>=.45?.8:.3)+Math.min(flowHits,4)*.25+(type==="email"&&email.polite>=3?.5:0));
-  const dims = [{name:"Structure",score:structure},{name:"Content",score:content},{name:"Coherence",score:coherence},{name:"Example",score:detail},{name:"Grammar",score:grammar},{name:"Vocabulary",score:vocabulary}];
-  let raw = dims.reduce((sum,d)=>sum+d.score*(d.name==="Grammar"?2.4:1),0)/7.4-.55;
-  if (ws.length < target) raw -= .35;
-  if (paragraphs <= 1) raw -= .35;
-  if (!evidence && type!=="email") raw -= .2;
-  if (type==="email") {
-    if (!email.purpose) raw -= .25;
-    if (!email.details && email.detailSentences<2) raw -= .2;
-    if (ws.length>=target&&diversity>=.48&&email.purpose&&email.polite>=2&&email.detailSentences>=4) raw += .35;
-  } else if (ws.length>=target&&diversity>=.48&&evidence>=2&&transitions>=2&&/\b(i (?:firmly |strongly )?(?:believe|agree|disagree|maintain|support)|in my view)\b/i.test(text)) {
-    raw += .35;
-  }
-  return {dims,taskScore:half(raw),words:ws.length,paragraphs,transitions,evidence,diversity};
+  const organization=quarter((type==="email"?1.25:1.5)+(ss.length>=3?.75:ss.length*.2)+(type==="email"?(email.purpose?.5:0)+(PATTERNS.email.greeting.test(text)?.45:0)+(PATTERNS.email.closing.test(text)?.45:0):(stance?.5:0))+Math.min(flowHits,3)*.2+.5);
+  const sentenceLengths=ss.map(s=>words(s).length), bins=new Set(sentenceLengths.map(n=>n<=10?"s":n<=24?"m":"l")).size;
+  const subordination=count(text,/\b(although|because|before|after|if|since|unless|when|whereas|while|who|which|that)\b/gi);
+  const syntax=quarter(1.5+Math.min(1,ss.length/6)*.6+Math.min(1,subordination/3)+(.35+.2*bins)+(avg>=11?.45:avg/11*.45));
+  const longContent=ws.filter(w=>w.length>=7).length/Math.max(ws.length,1);
+  const vocabulary=quarter(1.4+(diversity>=.72?1.2:diversity>=.62?1:diversity>=.52?.8:.5)+Math.min(1.2,longContent/.24*1.2)+Math.min(.35,flowHits*.12)-template);
+  const errors=grammarRisk(text), errorDensity=errors/Math.max(ws.length,1)*100;
+  const accuracy=quarter(5-Math.min(4.5,errorDensity*.42));
+  const dims = [{name:"Task Fulfillment",score:task},{name:"Elaboration",score:elaboration},{name:"Organization",score:organization},{name:"Syntax Range",score:syntax},{name:"Vocabulary Control",score:vocabulary},{name:"Language Accuracy",score:accuracy}];
+  const weights={"Task Fulfillment":.24,"Elaboration":.22,"Organization":.14,"Syntax Range":.14,"Vocabulary Control":.12,"Language Accuracy":.14};
+  let raw=dims.reduce((sum,d)=>sum+d.score*weights[d.name],0);
+  let taskScore=half(raw);
+  if(ws.length<20) taskScore=Math.min(taskScore,1);
+  else if(ws.length<40) taskScore=Math.min(taskScore,2);
+  if(accuracy<=1) taskScore=Math.min(taskScore,2);
+  return {dims,taskScore,words:ws.length,paragraphs,transitions,evidence,diversity,errors};
 }
 
 function topicFit(promptText,answerText) {
@@ -120,7 +150,7 @@ function render() {
   $("summary").textContent=`${wc}단어 답안입니다. 핵심 구조 ${moves.detected.length}/${moves.requiredCount}개가 감지됐습니다.`;
   renderBars(result.dims); list("detected",moves.detected.map(x=>LABELS[x]),"아직 감지된 항목이 없습니다."); list("missing",moves.missing.map(x=>LABELS[x]),"핵심 구조가 모두 포함됐습니다.");
   $("nextAction").textContent=moves.missing.length?`${LABELS[moves.missing[0]]}을(를) 한 문장으로 보완하세요.`:"각 근거가 질문에 직접 연결되는지 검토하세요.";
-  const strengths=[],weaknesses=[]; if(result.words >= (type==="email"?80:100)) strengths.push("권장 최소 분량을 충족했습니다."); else weaknesses.push("핵심 근거나 상황 설명을 더해 전개를 보완하세요."); if(result.paragraphs>=3) strengths.push("문단별 기능이 비교적 분명합니다."); else weaknesses.push("아이디어 경계에 맞춰 문단을 나누세요."); if(result.evidence>=2) strengths.push("이유·예시·결과 연결이 보입니다."); else weaknesses.push("주장 뒤에 구체적인 이유와 예시를 추가하세요."); if(result.transitions>=2) strengths.push("연결어로 흐름을 표시했습니다."); else weaknesses.push("For example, As a result 같은 연결 표현을 활용하세요.");
+  const strengths=[],weaknesses=[]; if(result.words >= (type==="email"?80:100)) strengths.push("아이디어 전개를 위한 권장 연습 분량을 확보했습니다."); else weaknesses.push("단어 수를 채우기보다 핵심 주장에 관련 이유나 세부 정보를 보태세요."); if(result.evidence>=2) strengths.push("이유·예시·결과를 통한 지원이 보입니다."); else weaknesses.push("가장 중요한 주장에 이유·사례·결과 중 필요한 내용을 구체화하세요."); if(result.errors===0) strengths.push("내장 규칙에서 명백한 문법 오류가 감지되지 않았습니다."); else weaknesses.push(`검출 가능한 언어 오류가 ${result.errors}건 있습니다. 원문 문맥을 확인하세요.`); if(prompt.value.trim()&&topicFit(prompt.value,text)<.25) weaknesses.push("표면 키워드 일치도가 낮습니다. 실제 주제 이탈인지 바꿔쓰기인지 직접 확인하세요(점수 미반영).");
   list("strengths",strengths,"감지된 강점보다 보완 항목이 먼저 보입니다."); list("weaknesses",weaknesses,"큰 구조 누락이 감지되지 않았습니다.");
   const starters=type==="email"?["I am writing regarding...","Could you please...?","I would also appreciate it if...","Thank you for your assistance."]:["I believe this matters because...","I agree with [Name]'s point that...","One practical example is...","As a result, this would..."];
   $("starters").innerHTML=starters.map(x=>`<div class="starter">${escapeHtml(x)}</div>`).join(""); $("results").classList.remove("hidden"); $("status").textContent="브라우저 안에서 분석을 완료했습니다."; $("results").scrollIntoView({behavior:"smooth",block:"start"});

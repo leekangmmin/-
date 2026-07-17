@@ -133,7 +133,7 @@ function updateLiveStats() {
   const target = detectedType === "email" ? 80 : 100;
   setText(wordStatEl, "단어 " + words);
   setText(sentenceStatEl, "문장 " + sentences);
-  setText(targetHintEl, "권장 최소 " + target + "+");
+  setText(targetHintEl, "권장 연습 분량 " + target + "+ · 자동 감점 없음");
 }
 
 // 서버측 draft 동기화 — localStorage와 별개로 DB에도 보존해서
@@ -1212,7 +1212,7 @@ function renderGrammarImpact(items) {
     box.innerHTML =
       "<p><strong>이슈</strong>: " + esc(item.issue) + "</p>" +
       "<p><strong>횟수</strong>: " + item.count + "</p>" +
-      "<p><strong>예상 감점 영향</strong>: -" + item.estimated_penalty_0_5 + "점</p>";
+      "<p><strong>점수 처리</strong>: 오류 유형 하나당 고정 감점은 없으며 전체 답안에서 홀리스틱하게 판단됩니다.</p>";
     grammarImpactEl.appendChild(box);
   });
 }
@@ -1224,8 +1224,7 @@ function renderBeforeAfterProjection(p) {
   box.className = "edit-item";
   box.innerHTML =
     "<p><strong>현재 예상 과제 점수</strong>: " + p.current_score_0_5.toFixed(1) + " / 5</p>" +
-    "<p><strong>교정 후 예상 과제 점수</strong>: " + p.projected_score_0_5.toFixed(1) + " / 5</p>" +
-    "<p><strong>예상 상승</strong>: +" + p.expected_gain_0_5.toFixed(2) + "점</p>";
+    "<p><strong>교정 후 점수</strong>: 수정본 재채점 후 확인할 수 있습니다.</p>";
   beforeAfterProjectionEl.appendChild(box);
 }
 
@@ -1236,8 +1235,7 @@ function renderScoreSimulator(items) {
     box.className = "edit-item";
     box.innerHTML =
       "<p><strong>액션</strong>: " + esc(item.action) + "</p>" +
-      "<p><strong>예상 상승</strong>: +" + item.expected_delta_0_5 + "점</p>" +
-      "<p><strong>예상 과제 점수</strong>: " + item.projected_score_0_5 + " / 5</p>";
+      "<p><strong>점수 변화</strong>: 수정본 전체를 재채점해야 확인할 수 있습니다.</p>";
     scoreSimulatorEl.appendChild(box);
   });
 }
@@ -1344,13 +1342,13 @@ function renderExaminerFeedback(payload) {
 function renderBoosterList(result) {
   const items = [];
   if (result.grammar_stats && result.grammar_stats.total >= 4) {
-    items.push("문법 오류 총합을 4개 이하로 줄이면 과제 점수 상한이 크게 완화됩니다.");
+    items.push("반복되는 문법 오류가 실제 문맥에서도 맞는지 확인한 뒤 의미 전달을 방해하는 항목부터 수정하세요.");
   }
   if (result.prompt_fit && result.prompt_fit.score < 3.5) {
-    items.push("프롬프트 키워드 반영률을 올리면 Content 점수 안정성이 개선됩니다.");
+    items.push("표면 키워드 진단이 낮습니다. 문제 표현을 복사하지 말고 실제 질문에 직접 답했는지 확인하세요. 이 진단은 점수에 반영되지 않습니다.");
   }
   if (result.sample_comparison && result.sample_comparison.missing_points && result.sample_comparison.missing_points.length) {
-    items.push("누락된 샘플 포인트를 보완하면 구조 점수 상승이 쉽습니다.");
+    items.push("샘플 비교의 누락 항목은 참고용입니다. 실제 과제에서 필요한 내용인지 먼저 확인하세요.");
   }
   if (!items.length) {
     items.push("현재 균형이 좋아서 문법 정밀도와 어휘 치환만 다듬으면 4–5점대 과제 수행에 가까워질 수 있습니다.");

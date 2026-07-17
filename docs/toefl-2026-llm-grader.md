@@ -21,8 +21,9 @@ user-facing reason.
 - Pydantic strict mode rejects missing/extra fields and type coercion such as
   `"4"` in place of integer `4`.
 - Code verifies the exact four dimension keys for the selected task, target
-  range, required-point/tone caps, template evidence, error excerpts, and the
-  meaning-impeding error count.
+  range, template evidence, error excerpts, and the meaning-impeding error
+  count. Required-point, tone, paragraph, and sentence-length observations do
+  not create mechanical caps.
 - Markdown-wrapped or prose-prefixed JSON is rejected. JSON parsing gets one
   retry, and a schema failure gets one corrective re-request.
 - OpenAI uses the Responses API with strict `text.format` JSON Schema; Gemini
@@ -32,6 +33,8 @@ user-facing reason.
   the response remains relevant, purposeful, controlled, and nearly error-free.
 - Conventional Email openings/closings and prompt-specific Academic Discussion
   framing are not automatically treated as template abuse.
+- Mentioning another student is optional in Academic Discussion. The grader
+  must not deduct solely because no classmate is named.
 
 ## Claude usage
 

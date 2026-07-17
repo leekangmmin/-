@@ -249,7 +249,7 @@ def evaluate_prompt_fit(prompt_text: str, essay_text: str) -> dict:
     met_reqs, missing_reqs = _requirement_match(prompt_text, essay_text)
     req_total = len(met_reqs) + len(missing_reqs)
     requirement_ratio = (len(met_reqs) / req_total) if req_total else 0.0
-    template_penalty, template_reasons = _template_spam_penalty(essay_text)
+    _, template_reasons = _template_spam_penalty(essay_text)
 
     score = 1.5 + (overlap_ratio * 2.0)
     if req_total:
@@ -262,26 +262,24 @@ def evaluate_prompt_fit(prompt_text: str, essay_text: str) -> dict:
 
     if len(essay_tokens) < 90 and overlap_ratio < 0.3 and req_total:
         score -= 0.5
-    score -= template_penalty
-
     if pkeys and overlap_ratio < 0.15 and (not req_total or requirement_ratio < 0.35):
         score = min(score, 2.0)
 
     score = max(0.0, min(5.0, round(score * 2) / 2))
 
     reason_en = (
-        f"Keyword overlap {len(matched)}/{len(pkeys)}. "
+        f"Diagnostic surface overlap {len(matched)}/{len(pkeys)}. "
         f"Requirements met {len(met_reqs)}/{req_total}. "
         f"Matched: {', '.join(matched[:4]) if matched else 'none'}"
     )
     reason_ko = (
-        f"문제 핵심 키워드 일치 {len(matched)}/{len(pkeys)}, "
+        f"진단용 표면 키워드 일치 {len(matched)}/{len(pkeys)}, "
         f"요구사항 충족 {len(met_reqs)}/{req_total}. "
         f"일치 단어: {', '.join(matched[:4]) if matched else '없음'}"
     )
     if template_reasons:
-        reason_en += f". Template risk: {', '.join(template_reasons)}"
-        reason_ko += f". 템플릿 위험: {', '.join(template_reasons)}"
+        reason_en += f". Separate template observation: {', '.join(template_reasons)}"
+        reason_ko += f". 별도 템플릿 관찰: {', '.join(template_reasons)}"
 
     return {
         "score": score,
@@ -708,13 +706,6 @@ def detailed_grammar_corrections(essay_text: str, limit: int = 18) -> list[dict[
             apply_fix("tense", m_tense2.group(0), fixed, "be동사 수일치가 어색합니다. he/she/it was, we/they were를 사용하세요.", "high")
 
         lowered = current_lowered()
-        token_count = len(_tokens(working_sentence))
-        if token_count > 32 and (", and " in lowered or ", but " in lowered or ", so " in lowered):
-            fixed = working_sentence.replace(", and", ". In addition,", 1).replace(", but", ". However,", 1).replace(", so", ". Therefore,", 1)
-            m_runon = re.search(r",\s+(and|but|so)\b", lowered)
-            apply_fix("run_on", m_runon.group(0) if m_runon else original_sentence, fixed, "긴 문장에 접속절이 과도하게 연결되면 run-on 위험이 커집니다. 두 문장으로 나누세요.", "high")
-
-        lowered = current_lowered()
         # 종속절 도입부("When ..., I ...")는 정상 구조 — 진짜 comma splice 만 교정
         if find_comma_splices([working_sentence]) > 0:
             m_comma = re.search(r",\s+(i|we|they|he|she|it|this|that|there)\s+[a-z]+", lowered)
@@ -758,9 +749,9 @@ def build_smart_recommendations(
         recs.append(
             {
                 "title": "문법 오류 우선 제거",
-                "why": "문법은 가중치가 높아 총점에 직접적인 영향을 줍니다.",
-                "how_to": "상위 오류 2개(예: 수일치, run-on)만 선택해 10문장 교정 후 재작성하세요.",
-                "impact": "+0.3~0.6",
+                "why": "반복되는 언어 오류는 ETS의 언어 정확성 판단에 직접 관련됩니다.",
+                "how_to": "검출 결과를 원문과 대조한 뒤, 의미 전달을 방해하는 오류 유형부터 교정하세요.",
+                "impact": "언어 정확성 개선",
                 "confidence": "high",
             }
         )
@@ -769,9 +760,9 @@ def build_smart_recommendations(
         recs.append(
             {
                 "title": "Run-on 분리 훈련",
-                "why": "긴 문장 붕괴는 문법·가독성 동시 감점 요소입니다.",
-                "how_to": "35단어 이상 문장은 마침표/세미콜론 기준으로 2문장으로 분리하세요.",
-                "impact": "+0.2~0.4",
+                "why": "독립절을 콤마만으로 연결한 경우 문장 경계가 불분명해집니다.",
+                "how_to": "표시된 절 경계를 확인하고 마침표·세미콜론·적절한 접속사 중 하나를 선택하세요.",
+                "impact": "문장 정확성 개선",
                 "confidence": "high",
             }
         )
@@ -779,22 +770,22 @@ def build_smart_recommendations(
     if prompt_fit_score < 3.5:
         recs.append(
             {
-                "title": "프롬프트 키워드 고정",
-                "why": "질문 적합성이 낮으면 고득점이 제한됩니다.",
-                "how_to": "문제 핵심어 3개를 서론/본론 첫문장에 그대로 반영하세요.",
-                "impact": "+0.2~0.4",
-                "confidence": "medium",
+                "title": "질문 응답 직접 확인",
+                "why": "표면 키워드 진단의 일치도가 낮습니다. 바꿔쓰기를 놓친 것인지 실제 주제 이탈인지 사람이 확인해야 합니다.",
+                "how_to": "질문에 대한 입장이나 이메일 목적이 독자에게 바로 보이는지만 확인하세요. 문제 표현을 그대로 복사할 필요는 없습니다.",
+                "impact": "진단 항목·점수 자동 반영 없음",
+                "confidence": "low",
             }
         )
 
-    if metrics.evidence_hits < 3:
+    if metrics.evidence_hits < 2:
         recs.append(
             {
                 "title": "근거 밀도 강화",
-                "why": "예시·근거가 부족하면 Example와 Content 점수가 같이 낮아집니다.",
-                "how_to": "본론 문단마다 For example 문장 1개 + 결과 문장 1개를 추가하세요.",
-                "impact": "+0.2~0.5",
-                "confidence": "high",
+                "why": "관련 설명·예시·세부 정보는 공식 루브릭의 전개 판단에 중요합니다.",
+                "how_to": "가장 중요한 주장 하나에 이유, 구체적 상황, 결과 중 필요한 내용을 보태세요.",
+                "impact": "전개 충실도 개선",
+                "confidence": "medium",
             }
         )
 
@@ -802,19 +793,19 @@ def build_smart_recommendations(
         recs.append(
             {
                 "title": "이메일 격식 마감",
-                "why": "형식 누락은 Structure 점수 손실로 이어집니다.",
-                "how_to": "도입 인사 + 요청 목적 + 정중한 맺음말을 고정 템플릿으로 사용하세요.",
-                "impact": "+0.1~0.3",
+                "why": "수신자와 상황에 맞는 사회적 관습은 이메일 루브릭의 한 부분입니다.",
+                "how_to": "상황에 맞는 인사·목적·정중성을 확인하되 고정 문구를 억지로 늘리지 마세요.",
+                "impact": "의사소통 적절성 개선",
                 "confidence": "medium",
             }
         )
     else:
         recs.append(
             {
-                "title": "토론형 논리 프레임",
-                "why": "입장-근거-결론 프레임이 Coherence 안정화에 유리합니다.",
-                "how_to": "각 본론을 주장 1문장, 근거 1문장, 해석 1문장으로 고정하세요.",
-                "impact": "+0.2~0.4",
+                "title": "토론 기여 명료화",
+                "why": "명확한 입장과 관련 지원이 온라인 토론 기여의 핵심입니다.",
+                "how_to": "입장과 그 이유가 자연스럽게 이어지는지 확인하세요. 결론·학생 이름·특정 문단 수는 필수가 아닙니다.",
+                "impact": "과제 수행 명료도 개선",
                 "confidence": "medium",
             }
         )
@@ -880,29 +871,10 @@ def build_target_eta(rows: list[dict[str, Any]], current_score_0_5: float, targe
             "message": "이미 목표 점수권에 도달했습니다.",
         }
 
-    recent = rows[-6:]
-    deltas: list[float] = []
-    for i in range(1, len(recent)):
-        prev = float(recent[i - 1].get("estimated_score_0_5", 0))
-        curr = float(recent[i].get("estimated_score_0_5", 0))
-        deltas.append(curr - prev)
-
-    positive = [d for d in deltas if d > 0]
-    avg_gain = sum(positive) / len(positive) if positive else 0.0
-    if avg_gain <= 0.01:
-        return {
-            "estimated_attempts": 8,
-            "pace_label": "slow",
-            "message": "최근 상승 추세가 약합니다. 문법 우선 전략으로 2~3회 내 반등을 노리세요.",
-        }
-
-    remain = max(0.0, target_score_0_5 - current_score_0_5)
-    attempts = int(max(1, round(remain / avg_gain)))
-    pace = "fast" if attempts <= 2 else ("steady" if attempts <= 5 else "slow")
     return {
-        "estimated_attempts": attempts,
-        "pace_label": pace,
-        "message": f"현재 추세 기준 약 {attempts}회 제출 시 목표 점수 도달이 예상됩니다.",
+        "estimated_attempts": 0,
+        "pace_label": "not_estimated",
+        "message": "제출 횟수만으로 목표 도달 시점을 신뢰성 있게 예측할 수 없습니다. 수정본을 같은 문제와 조건으로 재채점해 변화를 확인하세요.",
     }
 
 
@@ -923,11 +895,11 @@ def build_sentence_variety(essay_text: str) -> dict[str, Any]:
     long = sum(1 for x in lengths if x >= 25) / n
 
     if long > 0.35:
-        rec = "긴 문장 비중이 높습니다. 긴 문장 2개 중 1개는 분리하세요."
+        rec = "긴 문장 비중이 높지만 길이 자체는 오류가 아닙니다. 절 관계와 문장부호가 명확한지만 확인하세요."
     elif short > 0.45:
         rec = "짧은 문장 비중이 높습니다. 근거 문장을 1~2개 확장하세요."
     elif medium < 0.35:
-        rec = "중간 길이 문장 비율을 늘리면 가독성과 점수 안정성이 좋아집니다."
+        rec = "문장 길이 분포가 한쪽에 치우쳤습니다. 의미 단위가 자연스럽게 읽히는지 확인하세요."
     else:
         rec = "문장 길이 분포가 균형적입니다. 현재 리듬을 유지하세요."
 
@@ -1020,12 +992,12 @@ def confidence_reason(
     if metrics.word_count < 80:
         reasons.append("분량이 짧아 추정 안정성이 낮습니다")
     if prompt_fit_score < 3.0:
-        reasons.append("프롬프트 키워드 반영률이 낮습니다")
+        reasons.append("표면 키워드 진단이 낮아 의미 적합성을 자동 확인하기 어렵습니다")
     if grammar_total >= 5:
         reasons.append("문법 오류 패턴이 다수 관찰됩니다")
 
     if not reasons:
-        reasons.append("분량, 프롬프트 적합성, 문장 안정성이 균형적입니다")
+        reasons.append("분량과 검출 가능한 문장 안정성이 균형적입니다")
 
     return f"{level.upper()} 신뢰도 판단 근거: " + "; ".join(reasons[:3])
 
@@ -1035,15 +1007,15 @@ def _rewrite_priority_action(weakness: str) -> str:
     if "분량" in weakness:
         return "과제별 권장 최소 분량을 채우고, 주장-근거-결론 순서로 논리를 완성하세요."
     if "문단" in weakness:
-        return "문단을 3개 이상으로 나누고, 각 문단 첫 문장에 핵심 주장 하나만 두세요."
+        return "문단 수를 맞추기보다 아이디어 경계가 독자에게 분명한지 확인하세요."
     if "근거" in weakness or "예시" in weakness:
         return "주장마다 구체적 예시 1개와, 그 예시가 왜 중요한지 설명 1문장을 붙이세요."
     if "문법" in weakness or "수일치" in weakness or "시제" in weakness:
         return "각 문장에서 주어-동사 수일치와 시제를 먼저 확인한 뒤 제출하세요."
     if "프롬프트" in weakness or "키워드" in weakness or "적합성" in weakness:
-        return "문제 핵심 키워드 2개 이상을 본문에 직접 넣어 질문에 정확히 답하세요."
+        return "문제 표현을 복사하기보다 입장이나 의사소통 목적이 직접 드러나는지 확인하세요."
     if "문장" in weakness and ("경계" in weakness or "run-on" in lowered):
-        return "긴 문장은 둘로 끊고 접속사는 하나만 남겨 문장 경계를 분명히 하세요."
+        return "표시된 독립절 경계에 마침표·세미콜론·적절한 접속사를 사용하세요."
     if weakness.endswith(("하세요.", "합니다.", "입니다.")):
         return weakness
     return weakness + "을 먼저 고치세요."
@@ -1063,12 +1035,12 @@ def bilingual_summary(
         priority = "근거를 더 구조적으로 쓰세요."
     warn = " (추가 개선 필요)" if total_score < 4.0 else ""
     fit_ko = (
-        f"주제 반영도는 {prompt_fit_score:.1f}/5.0입니다."
+        f"점수에 반영되지 않는 표면 주제 진단은 {prompt_fit_score:.1f}/5.0입니다."
         if prompt_fit_evaluated
         else "문제 지문이 없어 주제 반영도는 측정하지 않았습니다."
     )
     fit_en = (
-        f"Your task-response fit is {prompt_fit_score:.1f}/5.0."
+        f"The non-scoring surface task-fit diagnostic is {prompt_fit_score:.1f}/5.0."
         if prompt_fit_evaluated
         else "Task-response fit was not measured because the prompt was not supplied."
     )
@@ -1088,7 +1060,7 @@ def build_dashboard(rows: list[dict]) -> dict:
             "grammar_error_trend": [],
             "recommended_focus": [
                 "첫 제출을 완료해 개인 대시보드를 시작하세요.",
-                "분량과 문단 구조를 먼저 안정화하세요.",
+                "입장·목적과 관련 지원이 명확한지 먼저 확인하세요.",
             ],
         }
 
@@ -1139,11 +1111,11 @@ def build_dashboard(rows: list[dict]) -> dict:
 
     focus = []
     if avg_prompt_fit < 3.5:
-        focus.append("문제 핵심 키워드 3개를 본문에 직접 반영하세요.")
+        focus.append("표면 키워드 진단을 참고하되, 실제 질문에 직접 답했는지 사람이 확인하세요.")
     if top_grammar and top_grammar[0]["type"] == "run_on":
-        focus.append("35단어 이상 문장을 분리해 가독성을 높이세요.")
+        focus.append("표시된 독립절 연결 오류에 적절한 문장부호나 접속사를 사용하세요.")
     if avg_score < 3.5:
-        focus.append("각 본론 문단에 이유-예시-해석 3요소를 넣으세요.")
+        focus.append("핵심 주장에 관련 이유·예시·해석 중 필요한 지원을 보태세요.")
     if not focus:
         focus.append("현재 강점을 유지하며 근거 정밀도만 높이면 0.5점 상승이 가능합니다.")
 
@@ -1166,14 +1138,14 @@ def build_pre_submit_checklist(prompt_type: str, prompt_text: str, essay_text: s
 
     items = [
         {
-            "label": f"권장 분량 {min_words}+ 단어",
+            "label": f"권장 연습 분량 {min_words}+ 단어(자동 감점 없음)",
             "status": "good" if metrics.word_count >= min_words else "warn",
             "score": 25 if metrics.word_count >= min_words else 10,
         },
         {
-            "label": "문단 구조 충족",
-            "status": "good" if metrics.paragraph_count >= (2 if prompt_type == "email" else 3) else "warn",
-            "score": 20 if metrics.paragraph_count >= (2 if prompt_type == "email" else 3) else 8,
+            "label": "관련 설명·세부 정보 포함",
+            "status": "good" if metrics.evidence_hits >= 1 or metrics.sentence_count >= 4 else "warn",
+            "score": 20 if metrics.evidence_hits >= 1 or metrics.sentence_count >= 4 else 8,
         },
         {
             "label": "문법 리스크 낮음",
@@ -1181,7 +1153,7 @@ def build_pre_submit_checklist(prompt_type: str, prompt_text: str, essay_text: s
             "score": 30 if grammar["total"] <= 2 else 12,
         },
         {
-            "label": "프롬프트 적합성",
+            "label": "표면 프롬프트 진단(점수 미반영)",
             "status": "good" if prompt_fit["score"] >= 3.5 else "warn",
             "score": 25 if prompt_fit["score"] >= 3.5 else 10,
         },
@@ -1236,62 +1208,30 @@ def build_grammar_drills(grammar_stats: dict[str, int]) -> list[dict[str, str]]:
                 "tip": "독립절 2개는 마침표/세미콜론+연결부사로 분리하세요.",
             }
         )
-    if not drills:
-        drills.append(
-            {
-                "issue": "정확성 유지",
-                "wrong": "I think it is good.",
-                "correct": "I argue that it is beneficial.",
-                "tip": "모호한 단어(good) 대신 구체적 어휘를 선택하세요.",
-            }
-        )
     return drills[:5]
 
 
 def build_score_simulator(current_score_0_5: float, grammar_stats: dict[str, int], evidence_hits: int) -> list[dict]:
-    items: list[dict] = []
-    grammar_total = int(grammar_stats.get("total", 0))
-
-    if grammar_total >= 4:
-        delta = 0.5
-    elif grammar_total >= 2:
-        delta = 0.25
-    else:
-        delta = 0.1
-    projected_score = min(5.0, round((current_score_0_5 + delta) * 2) / 2)
-    items.append(
+    return [
         {
-            "action": "문법 오류 3개 줄이기",
-            "expected_delta_0_5": round(delta, 2),
-            "projected_score_0_5": projected_score,
+            "action": "문법 교정 후 수정본을 같은 조건으로 재채점",
+            "expected_delta_0_5": 0.0,
+            "projected_score_0_5": current_score_0_5,
             "projected_band_1_6": None,
-        }
-    )
-
-    ex_delta = 0.35 if evidence_hits < 2 else 0.2
-    projected_score2 = min(5.0, round((current_score_0_5 + ex_delta) * 2) / 2)
-    items.append(
+        },
         {
-            "action": "각 본론에 구체 예시 1개 추가",
-            "expected_delta_0_5": round(ex_delta, 2),
-            "projected_score_0_5": projected_score2,
+            "action": "전개 보완 후 수정본을 같은 조건으로 재채점",
+            "expected_delta_0_5": 0.0,
+            "projected_score_0_5": current_score_0_5,
             "projected_band_1_6": None,
-        }
-    )
-    return items
+        },
+    ]
 
 
 def build_grammar_impact(grammar_stats: dict[str, int]) -> list[dict[str, Any]]:
-    weights = {
-        "run_on": 0.15,
-        "subject_verb": 0.14,
-        "tense": 0.12,
-        "article": 0.08,
-        "preposition": 0.07,
-        "punctuation": 0.05,
-    }
+    issues = ["run_on", "subject_verb", "tense", "article", "preposition", "punctuation"]
     items: list[dict[str, Any]] = []
-    for issue, w in weights.items():
+    for issue in issues:
         count = int(grammar_stats.get(issue, 0))
         if count <= 0:
             continue
@@ -1299,29 +1239,20 @@ def build_grammar_impact(grammar_stats: dict[str, int]) -> list[dict[str, Any]]:
             {
                 "issue": issue,
                 "count": count,
-                "estimated_penalty_0_5": round(min(1.2, count * w), 2),
+                "estimated_penalty_0_5": 0.0,
             }
         )
-    items.sort(key=lambda x: float(x["estimated_penalty_0_5"]), reverse=True)
+    items.sort(key=lambda x: int(x["count"]), reverse=True)
     return items[:6]
 
 
 def build_before_after_projection(current_score_0_5: float, grammar_stats: dict[str, int]) -> dict[str, float | None]:
-    total = int(grammar_stats.get("total", 0))
-    gain = 0.1
-    if total >= 8:
-        gain = 0.7
-    elif total >= 5:
-        gain = 0.5
-    elif total >= 3:
-        gain = 0.35
-    projected = min(5.0, round((current_score_0_5 + gain) * 2) / 2)
     return {
         "current_score_0_5": current_score_0_5,
-        "projected_score_0_5": projected,
+        "projected_score_0_5": current_score_0_5,
         "current_band_1_6": None,
         "projected_band_1_6": None,
-        "expected_gain_0_5": round(projected - current_score_0_5, 2),
+        "expected_gain_0_5": 0.0,
     }
 
 
@@ -1331,13 +1262,13 @@ def build_target_band_strategy(target_score_0_5: float, current_score_0_5: float
     if target_score_0_5 <= 3.5:
         return [
             {"title": "문법 안정화 우선", "detail": "수일치/시제/문장부호 오류를 먼저 제거해 기본 점수를 확보하세요."},
-            {"title": "템플릿 고정", "detail": "서론-본론-결론 틀을 고정해 구조 점수 변동을 줄이세요."},
-            {"title": "근거 최소 2개", "detail": "본론마다 이유 1개+예시 1개를 넣어 내용 충실도를 확보하세요."},
+            {"title": "목적 명료화", "detail": "입장 또는 이메일 목적이 첫 읽기에 분명한지 확인하세요."},
+            {"title": "지원 구체화", "detail": "가장 중요한 주장에 관련 이유나 세부 정보를 보태세요."},
         ]
 
     plans = [
-        {"title": "논리 밀도 강화", "detail": "주장-근거-해석 3단 문장을 문단마다 반복하세요."},
-        {"title": "고급 어휘 치환", "detail": "반복되는 일반어를 학술 어휘로 치환해 표현 정밀도를 높이세요."},
+        {"title": "논리 밀도 강화", "detail": "주장과 지원의 관계가 독자에게 명확한지 검토하세요."},
+        {"title": "어휘 정밀도", "detail": "어려운 단어보다 문맥에 가장 정확한 동사와 명사를 선택하세요."},
         {"title": "문장 다양성", "detail": "짧은 문장+중간 문장+복문을 섞어 리듬과 가독성을 동시에 확보하세요."},
     ]
     if gap >= 1.0:
@@ -1381,7 +1312,7 @@ def build_examiner_feedback(total_score_0_5: float, grammar_stats: dict[str, int
     else:
         comments.append("Grammar control is mostly stable for this level.")
     if prompt_fit_score < 3.5:
-        comments.append("Task response is partial. Address prompt keywords more directly.")
+        comments.append("Surface keyword overlap is low; verify task relevance manually. This diagnostic did not change the score.")
     comments.append("Use tighter evidence and clearer sentence boundaries.")
     return {"mode": "exam", "comments": comments[:4]}
 
@@ -1411,7 +1342,7 @@ def build_weekly_plan(weaknesses: list[str], weakness_ranking: list[str] | None 
     rank_hint = ranking[0] if ranking else "run_on"
     return [
         f"월: {primary} 관련 약점 문장 15개 교정",
-        "화: Task 유형별 템플릿 3세트 암기 + 변형 연습",
+        "화: Task 유형별 목적·독자·지원 방식 비교 연습",
         "수: 25분 타이머 실전 작성 2회",
         "목: 첨삭 결과로 패러프레이징 20개 재작성",
         f"금: 상위 약점({rank_hint}) 집중 드릴 30문장",
@@ -1464,11 +1395,8 @@ def score_highlights(essay_text: str) -> list[dict]:
 
         if any(k in lowered for k in ["for example", "for instance", "because", "therefore"]):
             impact = "positive"
-            reason = "Contains support logic or evidence markers that strengthen scoring."
-        if length > 35:
-            impact = "negative"
-            reason = "Likely run-on sentence; clarity and grammar control may drop."
-        elif length < 5:
+            reason = "Signals a support relationship; the surrounding idea still determines its value."
+        if length < 5:
             impact = "negative"
             reason = "Too short to develop meaning for rubric credit."
         elif "thing" in lowered or "stuff" in lowered:
@@ -1553,13 +1481,11 @@ def paraphrase_recommendations(essay_text: str, prompt_type: str) -> list[dict[s
         (r"\bi think\b", "I would argue that", "주장 강도를 높여 학술적 톤을 만듭니다."),
         (r"\ba lot of\b", "a considerable number of", "구어체를 학술 표현으로 바꿉니다."),
         (r"\bthings\b", "factors", "모호한 일반어를 정확한 어휘로 대체합니다."),
-        (r"\bvery important\b", "crucial", "강조를 간결한 고급 어휘로 표현합니다."),
-        (r"\bgood\b", "beneficial", "평가 형용사를 더 정밀하게 바꿉니다."),
-        (r"\bbad\b", "detrimental", "부정 평가를 더 학술적으로 표현합니다."),
-        (r"\bhelp\b", "facilitate", "동사를 더 포멀하게 교체합니다."),
-        (r"\bshow\b", "demonstrate", "근거 제시 동사의 정확도를 높입니다."),
-        (r"\bbecause\b", "given that", "연결어를 변형해 어휘 반복을 줄입니다."),
-        (r"\bso\b", "therefore", "논리 연결을 명확한 전환어로 만듭니다."),
+        (r"\bvery important\b", "crucial", "문맥이 같을 때 사용할 수 있는 간결한 대안입니다."),
+        (r"\bgood\b", "beneficial", "실제로 긍정적 효과를 뜻할 때 사용할 수 있는 대안입니다."),
+        (r"\bbad\b", "harmful", "실제로 해로운 효과를 뜻할 때 사용할 수 있는 대안입니다."),
+        (r"\bhelp\b", "support", "문맥에 따라 더 구체화할 수 있는 대안입니다."),
+        (r"\bshow\b", "demonstrate", "근거가 명확히 입증할 때 사용할 수 있는 대안입니다."),
     ]
     if prompt_type == "email":
         rules.extend(
@@ -1571,8 +1497,8 @@ def paraphrase_recommendations(essay_text: str, prompt_type: str) -> list[dict[s
     else:
         rules.extend(
             [
-                (r"\bi agree\b", "I strongly concur", "토론형에서 주장 강도를 높입니다."),
-                (r"\bi disagree\b", "I respectfully contend", "반대 의견을 학술적으로 표현합니다."),
+                (r"\bi agree\b", "I agree", "현재 표현은 이미 자연스럽습니다. 강도를 억지로 높일 필요가 없습니다."),
+                (r"\bi disagree\b", "I disagree", "현재 표현은 이미 자연스럽습니다. 불필요하게 복잡하게 바꾸지 마세요."),
             ]
         )
 
@@ -1593,19 +1519,6 @@ def paraphrase_recommendations(essay_text: str, prompt_type: str) -> list[dict[s
         if len(picks) >= 6:
             break
 
-    if not picks:
-        picks = [
-            {
-                "original": "I think",
-                "improved": "From my perspective,",
-                "reason": "도입 표현을 다양화하면 어휘 점수 유지에 유리합니다.",
-            },
-            {
-                "original": "for example",
-                "improved": "to illustrate,",
-                "reason": "예시 연결어를 순환 사용하면 반복 감점을 줄입니다.",
-            },
-        ]
     return picks
 
 
@@ -1638,7 +1551,7 @@ def personalization_advice(rows: list[dict[str, Any]]) -> dict:
     tone = "direct" if avg_score >= 3.5 else "supportive"
 
     if avg_fit < 3.2:
-        next_focus = "Mirror prompt keywords in thesis and topic sentences."
+        next_focus = "Verify that the response answers the task directly; exact prompt wording is not required."
     elif repeated:
         next_focus = f"Eliminate the top repeated issue first: {repeated[0]}."
     else:
@@ -1667,12 +1580,9 @@ def pre_submit_risk(prompt_type: str, prompt_text: str, essay_text: str) -> dict
         if not _re.search(r"\b(sincerely|regards|best|thank you|yours)\b", essay_text, _re.IGNORECASE):
             warnings.append("이메일 맺음말(Sincerely / Best regards 등)이 없습니다.")
     if prompt_fit["score"] < 3.0:
-        warnings.append("프롬프트 핵심 키워드 반영률이 낮습니다.")
+        warnings.append("표면 키워드 일치도가 낮습니다. 실제 주제 이탈인지 바꿔쓰기인지 직접 확인하세요.")
     if grammar["run_on"] > 0:
-        warnings.append("긴 문장(run-on)이 있어 감점 위험이 있습니다.")
-    min_paras = 2 if prompt_type == "email" else 3
-    if metrics.paragraph_count < min_paras:
-        warnings.append("문단 수가 부족해 논리 구조가 약해 보일 수 있습니다.")
+        warnings.append("독립절 연결 오류 가능성이 있어 문장 경계를 확인하세요.")
 
     risk_level: Literal["low", "medium", "high"] = "low"
     if len(warnings) >= 3:

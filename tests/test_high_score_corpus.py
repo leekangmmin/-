@@ -89,5 +89,8 @@ def test_github_pages_webapp_is_relative_and_private():
     assert "fetch(" not in javascript
     assert "서버 전송 없음" in html
     assert "service-worker.js" in javascript
-    assert "taskScore:half(raw)" in javascript
+    assert "Task Fulfillment" in javascript
+    assert "return {dims,taskScore" in javascript
+    assert "if (paragraphs <= 1)" not in javascript
+    assert "ss.every(s=>words(s).length<=36)" not in javascript
     assert "/ 5.0 예상 과제 점수" in html
